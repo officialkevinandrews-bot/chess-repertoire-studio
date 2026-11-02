@@ -10,33 +10,116 @@
 
 import { Route as rootRouteImport } from './routes/__root'
 import { Route as IndexRouteImport } from './routes/index'
+import { Route as EndgameRouteImport } from './routes/endgame'
+import { Route as OpeningCreatorRouteImport } from './routes/opening-creator'
+import { Route as MiddlegameDefenseRouteImport } from './routes/middlegame.defense'
+import { Route as MiddlegameGuessTheMoveRouteImport } from './routes/middlegame.guess-the-move'
+import { Route as MiddlegameSimplificationRouteImport } from './routes/middlegame.simplification'
+import { Route as MiddlegameTacticsRouteImport } from './routes/middlegame.tactics'
 
 const IndexRoute = IndexRouteImport.update({
   id: '/',
   path: '/',
   getParentRoute: () => rootRouteImport,
 } as any)
+const EndgameRoute = EndgameRouteImport.update({
+  id: '/endgame',
+  path: '/endgame',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const OpeningCreatorRoute = OpeningCreatorRouteImport.update({
+  id: '/opening-creator',
+  path: '/opening-creator',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const MiddlegameDefenseRoute = MiddlegameDefenseRouteImport.update({
+  id: '/middlegame/defense',
+  path: '/middlegame/defense',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const MiddlegameGuessTheMoveRoute = MiddlegameGuessTheMoveRouteImport.update({
+  id: '/middlegame/guess-the-move',
+  path: '/middlegame/guess-the-move',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const MiddlegameSimplificationRoute =
+  MiddlegameSimplificationRouteImport.update({
+    id: '/middlegame/simplification',
+    path: '/middlegame/simplification',
+    getParentRoute: () => rootRouteImport,
+  } as any)
+const MiddlegameTacticsRoute = MiddlegameTacticsRouteImport.update({
+  id: '/middlegame/tactics',
+  path: '/middlegame/tactics',
+  getParentRoute: () => rootRouteImport,
+} as any)
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
+  '/endgame': typeof EndgameRoute
+  '/opening-creator': typeof OpeningCreatorRoute
+  '/middlegame/defense': typeof MiddlegameDefenseRoute
+  '/middlegame/guess-the-move': typeof MiddlegameGuessTheMoveRoute
+  '/middlegame/simplification': typeof MiddlegameSimplificationRoute
+  '/middlegame/tactics': typeof MiddlegameTacticsRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
+  '/endgame': typeof EndgameRoute
+  '/opening-creator': typeof OpeningCreatorRoute
+  '/middlegame/defense': typeof MiddlegameDefenseRoute
+  '/middlegame/guess-the-move': typeof MiddlegameGuessTheMoveRoute
+  '/middlegame/simplification': typeof MiddlegameSimplificationRoute
+  '/middlegame/tactics': typeof MiddlegameTacticsRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/': typeof IndexRoute
+  '/endgame': typeof EndgameRoute
+  '/opening-creator': typeof OpeningCreatorRoute
+  '/middlegame/defense': typeof MiddlegameDefenseRoute
+  '/middlegame/guess-the-move': typeof MiddlegameGuessTheMoveRoute
+  '/middlegame/simplification': typeof MiddlegameSimplificationRoute
+  '/middlegame/tactics': typeof MiddlegameTacticsRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
-  fullPaths: '/'
+  fullPaths:
+    | '/'
+    | '/endgame'
+    | '/opening-creator'
+    | '/middlegame/defense'
+    | '/middlegame/guess-the-move'
+    | '/middlegame/simplification'
+    | '/middlegame/tactics'
   fileRoutesByTo: FileRoutesByTo
-  to: '/'
-  id: '__root__' | '/'
+  to:
+    | '/'
+    | '/endgame'
+    | '/opening-creator'
+    | '/middlegame/defense'
+    | '/middlegame/guess-the-move'
+    | '/middlegame/simplification'
+    | '/middlegame/tactics'
+  id:
+    | '__root__'
+    | '/'
+    | '/endgame'
+    | '/opening-creator'
+    | '/middlegame/defense'
+    | '/middlegame/guess-the-move'
+    | '/middlegame/simplification'
+    | '/middlegame/tactics'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
+  EndgameRoute: typeof EndgameRoute
+  OpeningCreatorRoute: typeof OpeningCreatorRoute
+  MiddlegameDefenseRoute: typeof MiddlegameDefenseRoute
+  MiddlegameGuessTheMoveRoute: typeof MiddlegameGuessTheMoveRoute
+  MiddlegameSimplificationRoute: typeof MiddlegameSimplificationRoute
+  MiddlegameTacticsRoute: typeof MiddlegameTacticsRoute
 }
 
 declare module '@tanstack/react-router' {
@@ -48,11 +131,59 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof IndexRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/endgame': {
+      id: '/endgame'
+      path: '/endgame'
+      fullPath: '/endgame'
+      preLoaderRoute: typeof EndgameRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/opening-creator': {
+      id: '/opening-creator'
+      path: '/opening-creator'
+      fullPath: '/opening-creator'
+      preLoaderRoute: typeof OpeningCreatorRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/middlegame/defense': {
+      id: '/middlegame/defense'
+      path: '/middlegame/defense'
+      fullPath: '/middlegame/defense'
+      preLoaderRoute: typeof MiddlegameDefenseRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/middlegame/guess-the-move': {
+      id: '/middlegame/guess-the-move'
+      path: '/middlegame/guess-the-move'
+      fullPath: '/middlegame/guess-the-move'
+      preLoaderRoute: typeof MiddlegameGuessTheMoveRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/middlegame/simplification': {
+      id: '/middlegame/simplification'
+      path: '/middlegame/simplification'
+      fullPath: '/middlegame/simplification'
+      preLoaderRoute: typeof MiddlegameSimplificationRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/middlegame/tactics': {
+      id: '/middlegame/tactics'
+      path: '/middlegame/tactics'
+      fullPath: '/middlegame/tactics'
+      preLoaderRoute: typeof MiddlegameTacticsRouteImport
+      parentRoute: typeof rootRouteImport
+    }
   }
 }
 
 const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
+  EndgameRoute: EndgameRoute,
+  OpeningCreatorRoute: OpeningCreatorRoute,
+  MiddlegameDefenseRoute: MiddlegameDefenseRoute,
+  MiddlegameGuessTheMoveRoute: MiddlegameGuessTheMoveRoute,
+  MiddlegameSimplificationRoute: MiddlegameSimplificationRoute,
+  MiddlegameTacticsRoute: MiddlegameTacticsRoute,
 }
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)
