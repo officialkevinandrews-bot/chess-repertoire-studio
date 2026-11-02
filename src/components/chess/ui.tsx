@@ -52,7 +52,7 @@ export function TrainingLayout({ board, children }: { board: ReactNode; children
 
 export function MoveList({ moves, className }: { moves: string[]; className?: string }) {
   const pairs: [number, string, string | undefined][] = [];
-  for (let i = 0; i < moves.length; i += 2) pairs.push([i / 2 + 1, moves[i], moves[i + 1]]);
+  for (let i = 0; i < moves.length; i += 2) pairs.push([i / 2 + 1, moves[i] ?? "", moves[i + 1]]);
   if (!pairs.length) return <p className="text-sm text-muted-foreground">No moves yet — drag a piece to start.</p>;
   return (
     <ol className={cn("grid max-h-64 grid-cols-[auto_1fr_1fr] gap-x-4 gap-y-1 overflow-auto font-mono text-sm", className)}>

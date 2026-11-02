@@ -24,13 +24,13 @@ type Mode = "theoretical" | "practical";
 
 function Endgame() {
   const [mode, setMode] = useState<Mode>("theoretical");
-  const [theoId, setTheoId] = useState(theoreticalEndgames[1].id);
-  const [pracId, setPracId] = useState(practicalEndgames[0].id);
+  const [theoId, setTheoId] = useState(theoreticalEndgames[1]?.id ?? "kp");
+  const [pracId, setPracId] = useState(practicalEndgames[0]?.id ?? "p1");
   const [demoOpen, setDemoOpen] = useState(false); // ANTIGRAVITY HOOK: set true when the user fails a position.
 
   const fen = mode === "theoretical"
-    ? theoreticalEndgames.find((e) => e.id === theoId)!.fen
-    : practicalEndgames.find((e) => e.id === pracId)!.fen;
+    ? theoreticalEndgames.find((e) => e.id === theoId)?.fen ?? ""
+    : practicalEndgames.find((e) => e.id === pracId)?.fen ?? "";
 
   return (
     <div className="mx-auto max-w-6xl">
