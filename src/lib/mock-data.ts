@@ -12,13 +12,88 @@ export const repertoire = [
   { name: "Caro-Kann — Advance", color: "black", lines: 12, mastery: 41 },
 ];
 
-export const tacticsPuzzle = {
-  id: "lichess-0001",
-  fen: "r1bqk2r/pppp1ppp/2n2n2/2b1p3/2B1P3/3P1N2/PPP2PPP/RNBQK2R w KQkq - 0 5",
-  theme: "Fork",
-  rating: 1640,
-  opening: "Italian Game",
-};
+export interface TacticsPuzzle {
+  id: string;
+  theme: "Fork" | "Absolute Pin" | "Relative Pin" | "Skewer" | "Discovered Attack" | "Deflection";
+  rating: number;
+  opening: string;
+  title: string;
+  fen: string;
+  solutionMovesLan: string[];
+  solutionMovesSan: string[];
+  hint: string;
+  explanation: string;
+}
+
+export const tacticsPuzzles: TacticsPuzzle[] = [
+  {
+    id: "tac-disc-qgd",
+    theme: "Discovered Attack",
+    rating: 1720,
+    opening: "Queen's Gambit Declined",
+    title: "Greek Gift & Queen Discovery",
+    fen: "r1b2rk1/pp3ppp/2n5/3qp3/8/2NB4/PPP2PPP/R2Q1RK1 w - - 0 13",
+    solutionMovesLan: ["d3h7", "g8h7", "d1d5"],
+    solutionMovesSan: ["Bxh7+", "Kxh7", "Qxd5"],
+    hint: "Notice Black's undefended queen on d5 along the open d-file. Can you deliver check with tempo?",
+    explanation:
+      "1. Bxh7+ delivers check with the bishop while unleashing a discovered attack from the d1-queen to Black's d5-queen. Black is forced to capture on h7, losing the queen on d5.",
+  },
+  {
+    id: "tac-fork-twoknights",
+    theme: "Fork",
+    rating: 1650,
+    opening: "Italian Game / Two Knights",
+    title: "Central Pin & Knight Fork",
+    fen: "r1b1kb1r/ppp2ppp/2n5/3q4/3pn3/5N2/PPP2PPP/RNBQR1K1 w kq - 0 8",
+    solutionMovesLan: ["b1c3"],
+    solutionMovesSan: ["Nc3"],
+    hint: "Black's e4 knight is pinned to their king by the e1 rook. Exploit the pin and fork their center.",
+    explanation:
+      "1. Nc3 attacks the queen on d5 and the knight on e4. Because the e4-knight is pinned to Black's king on e8, and the d4-pawn cannot capture c3 without hanging the queen, White wins material.",
+  },
+  {
+    id: "tac-pin-ruy",
+    theme: "Absolute Pin",
+    rating: 1580,
+    opening: "Ruy Lopez",
+    title: "Exploiting the Absolute Pin on c6",
+    fen: "r1bqk2r/ppp2ppp/2np4/1B2p3/4P3/5N2/PPPP1PPP/RNBQK2R w KQkq - 0 5",
+    solutionMovesLan: ["d2d4", "e5d4", "f3d4"],
+    solutionMovesSan: ["d4", "exd4", "Nxd4"],
+    hint: "Black's c6 knight cannot move because of the b5 bishop. Strike in the center!",
+    explanation:
+      "1. d4 breaks open the center while Black's c6 knight is immobilized by the absolute pin to the king on e8. After exd4 Nxd4, White dominates the board.",
+  },
+  {
+    id: "tac-skewer-queen",
+    theme: "Skewer",
+    rating: 1790,
+    opening: "Endgame Transition",
+    title: "Linear Rook Skewer",
+    fen: "4q3/8/8/4k3/8/8/8/4R1K1 w - - 0 1",
+    solutionMovesLan: ["e1e5"],
+    solutionMovesSan: ["Rxe5+"],
+    hint: "Line up the heavy pieces along the open e-file.",
+    explanation:
+      "1. Rxe5+ attacks the king directly. Because the queen on e8 is behind the king along the e-file, the king must step aside, allowing White to capture the queen.",
+  },
+  {
+    id: "tac-royal-fork",
+    theme: "Fork",
+    rating: 1610,
+    opening: "Scotch / Open Game",
+    title: "Devastating Royal Fork on c7",
+    fen: "r3k2r/pp3ppp/2n5/3N4/8/8/PPP2PPP/R3K2R w KQkq - 0 1",
+    solutionMovesLan: ["d5c7", "e8e7", "c7a8"],
+    solutionMovesSan: ["Nc7+", "Ke7", "Nxa8"],
+    hint: "A knight on d5 has eyes on both the king on e8 and the rook on a8.",
+    explanation:
+      "1. Nc7+ simultaneously attacks Black's king and the undefended a8-rook, winning a decisive exchange.",
+  },
+];
+
+export const tacticsPuzzle = tacticsPuzzles[0];
 
 export const guessTheMove = {
   game: "Carlsen – Caruana, Stavanger 2023",
@@ -35,24 +110,106 @@ export const guessTheMove = {
     "Grandmasters exchange on d5 here to define the pawn structure early. With the c-file half-open, White's rooks gain a natural target on c7, and Black's light-squared bishop remains passive behind the e6 pawn.",
 };
 
-export const simplification = {
-  fen: "3r2k1/pp3ppp/2n5/8/3R4/2P2N2/PP3PPP/6K1 w - - 0 24",
-  eval: 2.1,
-  reasons: [
-    "Trade Black's only active piece — the rook on d8 controls the open file.",
-    "Removing rooks kills counterplay against your queenside pawns.",
-    "The resulting knight endgame with a queenside majority is a technical win.",
-  ],
-  target: "Knight endgame, +2 pawns majority",
-};
+export interface SimplificationScenario {
+  id: string;
+  title: string;
+  fen: string;
+  eval: number;
+  expectedMoveLan: string;
+  expectedMoveSan: string;
+  blackReplyLan: string;
+  blackReplySan: string;
+  reasons: string[];
+  target: string;
+}
 
-export const defense = {
-  fen: "r4rk1/pp3ppp/2p5/4q3/2P1n3/1P2P2b/PB1QBPPP/R4RK1 w - - 0 18",
-  threats: [
-    { square: "g2", label: "Qxg2# — mate threat on g2" },
-    { square: "f2", label: "Nxf2 forks rook and king" },
-  ],
-};
+export const simplificationScenarios: SimplificationScenario[] = [
+  {
+    id: "simp-rook-trade",
+    title: "Liquidating Active Rooks",
+    fen: "3r2k1/pp3ppp/2n5/8/3R4/2P2N2/PP3PPP/6K1 w - - 0 24",
+    eval: 2.1,
+    expectedMoveLan: "d4d8",
+    expectedMoveSan: "Rxd8+",
+    blackReplyLan: "c6d8",
+    blackReplySan: "Nxd8",
+    reasons: [
+      "Trade Black's only active piece — the rook on d8 controls the open d-file.",
+      "Eliminating rooks kills all counterplay against your queenside pawns.",
+      "The resulting knight endgame with a queenside majority is a technical win.",
+    ],
+    target: "Knight endgame, +2 pawns majority",
+  },
+  {
+    id: "simp-queen-exchange",
+    title: "Neutralizing Queen Counterplay",
+    fen: "3r2k1/pp3ppp/8/3q4/8/1Q3N2/PP3PPP/6K1 w - - 0 26",
+    eval: 2.8,
+    expectedMoveLan: "b3d5",
+    expectedMoveSan: "Qxd5",
+    blackReplyLan: "d8d5",
+    blackReplySan: "Rxd5",
+    reasons: [
+      "Trade queens when up material to prevent any perpetual check possibilities.",
+      "Black's active queen on d5 is eliminated immediately.",
+      "The rook endgame is easily converted with king centralization.",
+    ],
+    target: "Rook endgame, +3 pawns majority",
+  },
+];
+
+export const simplification = simplificationScenarios[0];
+
+export interface DefenseDrill {
+  id: string;
+  title: string;
+  fen: string;
+  evalDeficit: string;
+  threats: { square: string; label: string }[];
+  holdingMovesLan: string[];
+  holdingMovesSan: string[];
+  blunderRefutations: Record<string, string>;
+  explanation: string;
+}
+
+export const defenseDrills: DefenseDrill[] = [
+  {
+    id: "def-eliminate-queen",
+    title: "Eliminate the Attacking Queen",
+    fen: "r4rk1/pp3ppp/2p5/4q3/2P1n3/1P2P2b/PB1QBPPP/R4RK1 w - - 0 18",
+    evalDeficit: "−1.8",
+    threats: [
+      { square: "g2", label: "Qxg2# — mating battery prepared by Black's bishop on h3" },
+      { square: "f2", label: "Nxf2 forks rook and queen" },
+    ],
+    holdingMovesLan: ["b2e5"],
+    holdingMovesSan: ["Bxe5"],
+    blunderRefutations: {
+      default: "Passive defense allows Black to play 1... Qg5! threatening unstoppable mate on g2.",
+      d2c1: "1. Qc1? allows Black to play 1... Qg5! followed by 2... Qxg2# checkmate!",
+      a1b1: "1. Rab1? ignores the attack and allows 1... Qg5! followed by 2... Qxg2#.",
+    },
+    explanation:
+      "The most effective defense is eliminating the primary attacker: 1. Bxe5! captures Black's queen directly, completely dismantling the checkmate threat on g2.",
+  },
+  {
+    id: "def-luft-escape",
+    title: "Create Back-Rank Escape Luft",
+    fen: "3r2k1/5ppp/8/8/8/8/5PPP/R5K1 w - - 0 1",
+    evalDeficit: "0.0",
+    threats: [{ square: "d1", label: "Rd1# — back-rank mate threat" }],
+    holdingMovesLan: ["h2h3", "g2g3", "h2h4"],
+    holdingMovesSan: ["h3", "g3", "h4"],
+    blunderRefutations: {
+      default:
+        "Failing to create luft allows Black to play 1... Rd1# delivering back-rank checkmate!",
+    },
+    explanation:
+      "Pushing h3 or g3 creates 'luft' (an escape square for the king), neutralizing Black's back-rank mate threat permanently.",
+  },
+];
+
+export const defense = defenseDrills[0];
 
 export const theoreticalEndgames = [
   {

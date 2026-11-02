@@ -7,6 +7,8 @@ import { Input } from "@/components/ui/input";
 import { ChessBoard } from "@/components/chess/ChessBoard";
 import {
   DataSourceBadge,
+  EngineAnalysisPanel,
+  EvaluationBar,
   MoveList,
   PageHeader,
   Panel,
@@ -33,8 +35,19 @@ export const Route = createFileRoute("/opening-creator")({
 });
 
 function OpeningCreator() {
-  const { fen, history, orientation, makeMove, undo, reset, flip, saveVariation } =
-    useChessTraining();
+  const {
+    fen,
+    history,
+    orientation,
+    makeMove,
+    undo,
+    reset,
+    flip,
+    saveVariation,
+    analysis,
+    isEngineThinking,
+    explanation,
+  } = useChessTraining();
   const [name, setName] = useState("");
   const [exported, setExported] = useState<string | null>(null);
 
@@ -51,7 +64,21 @@ function OpeningCreator() {
         title="Opening Creator"
         description="Play out your line on the board. Every move is recorded."
       />
-      <TrainingLayout board={<ChessBoard fen={fen} orientation={orientation} onMove={makeMove} />}>
+      <TrainingLayout
+        board={
+          <div className="flex items-start gap-4">
+            <EvaluationBar evalWhite={analysis?.evalWhite ?? 0.2} isThinking={isEngineThinking} />
+            <div className="flex-1">
+              <ChessBoard fen={fen} orientation={orientation} onMove={makeMove} />
+            </div>
+          </div>
+        }
+      >
+        <EngineAnalysisPanel
+          analysis={analysis}
+          isThinking={isEngineThinking}
+          explanation={explanation}
+        />
         <Panel title="Move list">
           <MoveList moves={history} />
         </Panel>

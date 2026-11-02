@@ -107,3 +107,148 @@ export function MoveList({ moves, className }: { moves: string[]; className?: st
     </ol>
   );
 }
+
+/** Vertical evaluation bar showing White vs Black advantage via winning probability */
+export function EvaluationBar({
+  evalWhite,
+  isThinking,
+  className,
+}: {
+  evalWhite: number;
+  isThinking?: boolean;
+  className?: string;
+}) {
+  // Convert centipawns to win percentage using standard logistic function
+  const cp = evalWhite * 100;
+  const clampedCp = Math.max(-1000, Math.min(1000, cp));
+  const whitePercent = Math.max(
+    5,
+    Math.min(95, 50 + (2 / (1 + Math.exp(-0.004 * clampedCp)) - 1) * 50),
+  );
+
+  const displayScore =
+    Math.abs(evalWhite) >= 900 ? `#` : `${evalWhite > 0 ? "+" : ""}${evalWhite.toFixed(1)}`;
+
+  return (
+    <div className={cn("flex flex-col items-center gap-1.5", className)}>
+      <div className="relative h-48 w-3 overflow-hidden rounded-full bg-slate-900 ring-1 ring-border shadow-inner">
+        <div
+          className="absolute bottom-0 w-full bg-slate-100 transition-all duration-300 ease-out"
+          style={{ height: `${whitePercent}%` }}
+        />
+        {isThinking && <div className="absolute inset-0 animate-pulse bg-primary/25" />}
+      </div>
+      <span className="font-mono text-[11px] font-semibold tracking-tight text-muted-foreground">
+        {displayScore}
+      </span>
+    </div>
+  );
+}
+
+/** Comprehensive Engine Analysis Panel displaying MultiPV 3, Motifs, and Coach Feedback */
+export function EngineAnalysisPanel({
+  analysis,
+  isThinking,
+  explanation,
+}: {
+  analysis: import("@/engine/stockfishTypes").EngineAnalysisResult | null;
+  isThinking?: boolean;
+  explanation?: string | null;
+}) {
+  if (!analysis) {
+    return (
+      <Panel title="Stockfish Brain (MultiPV 3)">
+        <p className="text-sm text-muted-foreground">
+          {isThinking
+            ? "Engine is analyzing position..."
+            : "Make a move to trigger multi-line engine analysis."}
+        </p>
+      </Panel>
+    );
+  }
+
+  const profile = analysis.profile;
+  const isTactic = profile.profile === "forced_tactic";
+  const isPositional = profile.profile === "quiet_positional";
+
+  return (
+    <Panel title="Stockfish Engine Analysis (MultiPV 3)" className="space-y-4">
+      {/* Tactical Profile Badge */}
+      <div className="flex flex-wrap items-center justify-between gap-2 border-b border-border pb-3">
+        <div className="flex items-center gap-2">
+          <span
+            className={cn(
+              "rounded-full px-2.5 py-0.5 text-xs font-semibold uppercase tracking-wider",
+              isTactic && "bg-amber-500/20 text-amber-400 border border-amber-500/30",
+              isPositional && "bg-emerald-500/20 text-emerald-400 border border-emerald-500/30",
+              !isTactic &&
+                !isPositional &&
+                "bg-blue-500/20 text-blue-400 border border-blue-500/30",
+            )}
+          >
+            {profile.profile.replace("_", " ")}
+          </span>
+          <span className="text-xs text-muted-foreground font-mono">Depth {analysis.depth}</span>
+        </div>
+        <span className="font-mono text-xs font-medium text-foreground">
+          Eval: {analysis.evalWhite > 0 ? "+" : ""}
+          {analysis.evalWhite.toFixed(2)}
+        </span>
+      </div>
+
+      <p className="text-xs text-muted-foreground leading-relaxed">{profile.reasoning}</p>
+
+      {/* Grandmaster AI Coach Explanation */}
+      {explanation && (
+        <div className="rounded-lg border border-primary/40 bg-primary/10 p-3 text-xs leading-relaxed text-foreground animate-in fade-in">
+          <span className="font-semibold text-primary block mb-1">Coach Insight:</span>
+          {explanation}
+        </div>
+      )}
+
+      {/* Tactical Motifs Detected */}
+      {analysis.motifs.length > 0 && (
+        <div className="space-y-1.5">
+          <span className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
+            Detected Motifs
+          </span>
+          <div className="flex flex-wrap gap-1.5">
+            {analysis.motifs.map((m, i) => (
+              <span
+                key={i}
+                title={m.description}
+                className="rounded-md bg-secondary border border-border px-2 py-1 text-xs font-medium text-foreground"
+              >
+                {m.name}
+              </span>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* Top 3 Engine Variation Lines */}
+      <div className="space-y-1.5 pt-1">
+        <span className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
+          Top Variations (MultiPV 3)
+        </span>
+        <div className="divide-y divide-border/60 rounded-lg border border-border bg-secondary/40 font-mono text-xs">
+          {analysis.lines.slice(0, 3).map((line) => (
+            <div key={line.multipv} className="flex items-center justify-between p-2">
+              <div className="flex items-center gap-2 overflow-hidden text-ellipsis whitespace-nowrap">
+                <span className="text-muted-foreground font-semibold">#{line.multipv}</span>
+                <span className="text-foreground">
+                  {line.sanPv.slice(0, 5).join(" ") || line.bestMoveSan}
+                </span>
+              </div>
+              <span className="text-muted-foreground font-semibold shrink-0 ml-2">
+                {line.score.type === "mate"
+                  ? `#${line.score.mateMoves}`
+                  : `${(line.score.scoreCp / 100).toFixed(2)}`}
+              </span>
+            </div>
+          ))}
+        </div>
+      </div>
+    </Panel>
+  );
+}

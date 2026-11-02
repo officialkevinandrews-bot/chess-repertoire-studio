@@ -1,5 +1,6 @@
 import { createFileRoute } from "@tanstack/react-router";
-import { useState } from "react";
+import { useEffect, useMemo, useState } from "react";
+import { Chess } from "chess.js";
 import { Bot, ChevronDown, Play, PlayCircle, Sparkles, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
@@ -34,10 +35,96 @@ function Endgame() {
   const [pracId, setPracId] = useState(practicalEndgames[0]?.id ?? "p1");
   const [demoOpen, setDemoOpen] = useState(false); // ANTIGRAVITY HOOK: set true when the user fails a position.
 
-  const fen =
+  const initialFen =
     mode === "theoretical"
       ? (theoreticalEndgames.find((e) => e.id === theoId)?.fen ?? "")
       : (practicalEndgames.find((e) => e.id === pracId)?.fen ?? "");
+
+  const [currentFen, setCurrentFen] = useState(initialFen);
+  const [isBotThinking, setIsBotThinking] = useState(false);
+  const [botMessage, setBotMessage] = useState<string | null>(null);
+
+  // Sync board when selection changes
+  useEffect(() => {
+    setCurrentFen(initialFen);
+    setBotMessage(null);
+  }, [initialFen]);
+
+  const chess = useMemo(() => {
+    const c = new Chess();
+    try {
+      c.load(initialFen);
+    } catch {
+      // fallback
+    }
+    return c;
+  }, [initialFen]);
+
+  const handleReset = () => {
+    chess.load(initialFen);
+    setCurrentFen(initialFen);
+    setBotMessage(null);
+  };
+
+  const onMove = (from: string, to: string) => {
+    if (isBotThinking) return false;
+
+    try {
+      const legalMoves = chess.moves({ verbose: true });
+      const isLegal = legalMoves.some((m) => m.from === from && m.to === to);
+      if (!isLegal) return false;
+
+      const userMove = chess.move({ from, to });
+      if (!userMove) return false;
+
+      setCurrentFen(chess.fen());
+
+      if (chess.isGameOver()) {
+        if (chess.isCheckmate()) {
+          setBotMessage("Checkmate! Flawless endgame execution.");
+        } else if (chess.isDraw()) {
+          setBotMessage("Draw achieved! Theoretical hold.");
+        }
+        return true;
+      }
+
+      // Trigger Stockfish bot defense
+      setIsBotThinking(true);
+      setBotMessage("Bot is calculating defense...");
+
+      import("@/engine/stockfishClient")
+        .then(({ StockfishClient }) => StockfishClient.getInstance())
+        .then((client) => client.evaluatePosition(chess.fen(), 10, 1))
+        .then((analysis) => {
+          const bestMoveLan = analysis.bestMove;
+          if (bestMoveLan && bestMoveLan.length >= 4) {
+            const bFrom = bestMoveLan.slice(0, 2);
+            const bTo = bestMoveLan.slice(2, 4);
+            const promo = bestMoveLan.length > 4 ? bestMoveLan[4] : undefined;
+
+            setTimeout(() => {
+              const botMoveRes = chess.move({ from: bFrom, to: bTo, promotion: promo });
+              if (botMoveRes) {
+                setCurrentFen(chess.fen());
+                setBotMessage(`Bot played ${botMoveRes.san}. Your turn.`);
+              }
+              setIsBotThinking(false);
+            }, 400);
+          } else {
+            setIsBotThinking(false);
+            setBotMessage("Your turn.");
+          }
+        })
+        .catch(() => {
+          setIsBotThinking(false);
+          setBotMessage("Your turn.");
+        });
+
+      return true;
+    } catch {
+      return false;
+    }
+  };
 
   return (
     <div className="mx-auto max-w-6xl">
@@ -50,7 +137,10 @@ function Endgame() {
             {(["theoretical", "practical"] as Mode[]).map((m) => (
               <button
                 key={m}
-                onClick={() => setMode(m)}
+                onClick={() => {
+                  setMode(m);
+                  setBotMessage(null);
+                }}
                 className={cn(
                   "rounded-md px-4 py-1.5 text-sm font-medium capitalize transition-all",
                   mode === m
@@ -66,22 +156,25 @@ function Endgame() {
       />
       <TrainingLayout
         board={
-          <div className="relative">
-            <ChessBoard
-              fen={fen}
-              onMove={
-                () =>
-                  false /* ANTIGRAVITY HOOK: Inject Stockfish UCI / Lichess API integration here. */
-              }
-            />
-            <Button
-              variant="destructive"
-              size="sm"
-              className="absolute right-3 top-3"
-              onClick={() => setDemoOpen(true)}
-            >
-              Simulate failure
-            </Button>
+          <div className="space-y-3">
+            <div className="relative">
+              <ChessBoard fen={currentFen} onMove={onMove} />
+              <div className="absolute right-3 top-3 flex items-center gap-1.5">
+                <Button variant="secondary" size="sm" onClick={handleReset}>
+                  Reset
+                </Button>
+                <Button variant="destructive" size="sm" onClick={() => setDemoOpen(true)}>
+                  Demonstration
+                </Button>
+              </div>
+            </div>
+
+            {botMessage && (
+              <div className="rounded-lg border border-border bg-card p-2.5 text-xs font-mono text-muted-foreground flex items-center gap-2 animate-in fade-in">
+                <Bot className="h-4 w-4 text-primary shrink-0" />
+                <span>{botMessage}</span>
+              </div>
+            )}
           </div>
         }
       >
