@@ -12,6 +12,7 @@ import { Route as rootRouteImport } from './routes/__root'
 import { Route as IndexRouteImport } from './routes/index'
 import { Route as EndgameRouteImport } from './routes/endgame'
 import { Route as OpeningCreatorRouteImport } from './routes/opening-creator'
+import { Route as MiddlegameCheckmatesRouteImport } from './routes/middlegame.checkmates'
 import { Route as MiddlegameDefenseRouteImport } from './routes/middlegame.defense'
 import { Route as MiddlegameGuessTheMoveRouteImport } from './routes/middlegame.guess-the-move'
 import { Route as MiddlegameSimplificationRouteImport } from './routes/middlegame.simplification'
@@ -30,6 +31,11 @@ const EndgameRoute = EndgameRouteImport.update({
 const OpeningCreatorRoute = OpeningCreatorRouteImport.update({
   id: '/opening-creator',
   path: '/opening-creator',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const MiddlegameCheckmatesRoute = MiddlegameCheckmatesRouteImport.update({
+  id: '/middlegame/checkmates',
+  path: '/middlegame/checkmates',
   getParentRoute: () => rootRouteImport,
 } as any)
 const MiddlegameDefenseRoute = MiddlegameDefenseRouteImport.update({
@@ -58,6 +64,7 @@ export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
   '/endgame': typeof EndgameRoute
   '/opening-creator': typeof OpeningCreatorRoute
+  '/middlegame/checkmates': typeof MiddlegameCheckmatesRoute
   '/middlegame/defense': typeof MiddlegameDefenseRoute
   '/middlegame/guess-the-move': typeof MiddlegameGuessTheMoveRoute
   '/middlegame/simplification': typeof MiddlegameSimplificationRoute
@@ -67,6 +74,7 @@ export interface FileRoutesByTo {
   '/': typeof IndexRoute
   '/endgame': typeof EndgameRoute
   '/opening-creator': typeof OpeningCreatorRoute
+  '/middlegame/checkmates': typeof MiddlegameCheckmatesRoute
   '/middlegame/defense': typeof MiddlegameDefenseRoute
   '/middlegame/guess-the-move': typeof MiddlegameGuessTheMoveRoute
   '/middlegame/simplification': typeof MiddlegameSimplificationRoute
@@ -77,6 +85,7 @@ export interface FileRoutesById {
   '/': typeof IndexRoute
   '/endgame': typeof EndgameRoute
   '/opening-creator': typeof OpeningCreatorRoute
+  '/middlegame/checkmates': typeof MiddlegameCheckmatesRoute
   '/middlegame/defense': typeof MiddlegameDefenseRoute
   '/middlegame/guess-the-move': typeof MiddlegameGuessTheMoveRoute
   '/middlegame/simplification': typeof MiddlegameSimplificationRoute
@@ -88,6 +97,7 @@ export interface FileRouteTypes {
     | '/'
     | '/endgame'
     | '/opening-creator'
+    | '/middlegame/checkmates'
     | '/middlegame/defense'
     | '/middlegame/guess-the-move'
     | '/middlegame/simplification'
@@ -97,6 +107,7 @@ export interface FileRouteTypes {
     | '/'
     | '/endgame'
     | '/opening-creator'
+    | '/middlegame/checkmates'
     | '/middlegame/defense'
     | '/middlegame/guess-the-move'
     | '/middlegame/simplification'
@@ -106,6 +117,7 @@ export interface FileRouteTypes {
     | '/'
     | '/endgame'
     | '/opening-creator'
+    | '/middlegame/checkmates'
     | '/middlegame/defense'
     | '/middlegame/guess-the-move'
     | '/middlegame/simplification'
@@ -116,6 +128,7 @@ export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
   EndgameRoute: typeof EndgameRoute
   OpeningCreatorRoute: typeof OpeningCreatorRoute
+  MiddlegameCheckmatesRoute: typeof MiddlegameCheckmatesRoute
   MiddlegameDefenseRoute: typeof MiddlegameDefenseRoute
   MiddlegameGuessTheMoveRoute: typeof MiddlegameGuessTheMoveRoute
   MiddlegameSimplificationRoute: typeof MiddlegameSimplificationRoute
@@ -143,6 +156,13 @@ declare module '@tanstack/react-router' {
       path: '/opening-creator'
       fullPath: '/opening-creator'
       preLoaderRoute: typeof OpeningCreatorRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/middlegame/checkmates': {
+      id: '/middlegame/checkmates'
+      path: '/middlegame/checkmates'
+      fullPath: '/middlegame/checkmates'
+      preLoaderRoute: typeof MiddlegameCheckmatesRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/middlegame/defense': {
@@ -180,6 +200,7 @@ const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
   EndgameRoute: EndgameRoute,
   OpeningCreatorRoute: OpeningCreatorRoute,
+  MiddlegameCheckmatesRoute: MiddlegameCheckmatesRoute,
   MiddlegameDefenseRoute: MiddlegameDefenseRoute,
   MiddlegameGuessTheMoveRoute: MiddlegameGuessTheMoveRoute,
   MiddlegameSimplificationRoute: MiddlegameSimplificationRoute,

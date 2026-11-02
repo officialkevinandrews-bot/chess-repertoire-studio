@@ -21,7 +21,9 @@ const HL = {
 };
 
 export function ChessBoard({ fen, orientation = "white", onMove, highlights = {} }: Props) {
-  const squareStyles = Object.fromEntries(Object.entries(highlights).map(([sq, k]) => [sq, { background: HL[k] }]));
+  const squareStyles = Object.fromEntries(
+    Object.entries(highlights).map(([sq, k]) => [sq, { background: HL[k] }]),
+  );
   const placeholder = <div className="aspect-square w-full animate-pulse rounded-xl bg-muted" />;
   return (
     <div className="w-full overflow-hidden rounded-xl shadow-[var(--shadow-board)] ring-1 ring-border">

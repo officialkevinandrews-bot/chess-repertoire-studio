@@ -10,9 +10,15 @@ export const Route = createFileRoute("/middlegame/defense")({
   head: () => ({
     meta: [
       { title: "Defensive Drills — Chess Buddy" },
-      { name: "description", content: "Hold tough positions and neutralize attacks from your own openings." },
+      {
+        name: "description",
+        content: "Hold tough positions and neutralize attacks from your own openings.",
+      },
       { property: "og:title", content: "Defensive Drills — Chess Buddy" },
-      { property: "og:description", content: "Hold tough positions and neutralize attacks from your own openings." },
+      {
+        property: "og:description",
+        content: "Hold tough positions and neutralize attacks from your own openings.",
+      },
     ],
   }),
   component: Defense,
@@ -21,19 +27,51 @@ export const Route = createFileRoute("/middlegame/defense")({
 // ANTIGRAVITY DATA SOURCE: Scrape puzzles and games within these openings where the player is worse, defending against an attack, or fighting for an equalizer.
 function Defense() {
   const [showThreats, setShowThreats] = useState(true);
-  const highlights = showThreats ? Object.fromEntries(defense.threats.map((t) => [t.square, "threat" as const])) : {};
+  const highlights = showThreats
+    ? Object.fromEntries(defense.threats.map((t) => [t.square, "threat" as const]))
+    : {};
   return (
     <div className="mx-auto max-w-6xl">
-      <PageHeader eyebrow="Middlegame · 3d" title="Defensive Drills" description="You're under pressure. Find the move that holds." right={<span className="rounded-lg bg-mistake/15 px-3 py-1.5 font-mono text-mistake">−1.8</span>} />
+      <PageHeader
+        eyebrow="Middlegame · 3d"
+        title="Defensive Drills"
+        description="You're under pressure. Find the move that holds."
+        right={
+          <span className="rounded-lg bg-mistake/15 px-3 py-1.5 font-mono text-mistake">−1.8</span>
+        }
+      />
       {/* Board always opens from the defender's perspective. */}
-      <TrainingLayout board={<ChessBoard fen={defense.fen} highlights={highlights} onMove={() => false /* ANTIGRAVITY HOOK: Inject Stockfish UCI / Lichess API integration here. */} />}>
-        <DataSourceBadge>{"// ANTIGRAVITY DATA SOURCE: Scrape puzzles and games within these openings where the player is worse, defending against an attack, or fighting for an equalizer."}</DataSourceBadge>
+      <TrainingLayout
+        board={
+          <ChessBoard
+            fen={defense.fen}
+            highlights={highlights}
+            onMove={
+              () =>
+                false /* ANTIGRAVITY HOOK: Inject Stockfish UCI / Lichess API integration here. */
+            }
+          />
+        }
+      >
+        <DataSourceBadge>
+          {
+            "// ANTIGRAVITY DATA SOURCE: Scrape puzzles and games within these openings where the player is worse, defending against an attack, or fighting for an equalizer."
+          }
+        </DataSourceBadge>
         <section className="rounded-xl border border-mistake/50 bg-mistake/10 p-5 animate-in fade-in">
-          <h2 className="mb-3 flex items-center gap-2 font-semibold text-mistake"><AlertTriangle className="h-5 w-5 animate-pulse" /> Threat Tracker</h2>
+          <h2 className="mb-3 flex items-center gap-2 font-semibold text-mistake">
+            <AlertTriangle className="h-5 w-5 animate-pulse" /> Threat Tracker
+          </h2>
           <ul className="space-y-2">
             {defense.threats.map((t) => (
-              <li key={t.square} className="flex items-center gap-3 rounded-md bg-background/50 p-2 text-sm">
-                <span className="rounded bg-mistake px-1.5 font-mono text-xs text-mistake-foreground">{t.square}</span>{t.label}
+              <li
+                key={t.square}
+                className="flex items-center gap-3 rounded-md bg-background/50 p-2 text-sm"
+              >
+                <span className="rounded bg-mistake px-1.5 font-mono text-xs text-mistake-foreground">
+                  {t.square}
+                </span>
+                {t.label}
               </li>
             ))}
           </ul>
@@ -45,7 +83,9 @@ function Defense() {
             <li>Is there a counter-threat that gains a tempo?</li>
           </ul>
         </Panel>
-        <Button variant="secondary" onClick={() => setShowThreats((s) => !s)}><Eye /> {showThreats ? "Hide" : "Show"} threat squares</Button>
+        <Button variant="secondary" onClick={() => setShowThreats((s) => !s)}>
+          <Eye /> {showThreats ? "Hide" : "Show"} threat squares
+        </Button>
       </TrainingLayout>
     </div>
   );
