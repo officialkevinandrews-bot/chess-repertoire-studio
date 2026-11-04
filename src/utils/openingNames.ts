@@ -1,0 +1,138 @@
+/**
+ * Opening Names and ECO Code Detector
+ * Maps initial move sequences to standard chess opening names and ECO codes.
+ */
+
+export interface RecognizedOpening {
+  eco: string;
+  name: string;
+  variation?: string;
+}
+
+const OPENING_DATABASE: { moves: string[]; eco: string; name: string }[] = [
+  // Sicilian Defense
+  {
+    moves: ["e4", "c5", "Nf3", "d6", "d4", "cxd4", "Nxd4", "Nf6", "Nc3", "a6"],
+    eco: "B90",
+    name: "Sicilian Defense: Najdorf Variation",
+  },
+  {
+    moves: ["e4", "c5", "Nf3", "d6", "d4", "cxd4", "Nxd4", "Nf6", "Nc3", "g6"],
+    eco: "B70",
+    name: "Sicilian Defense: Dragon Variation",
+  },
+  {
+    moves: ["e4", "c5", "Nf3", "e6", "d4", "cxd4", "Nxd4", "a6"],
+    eco: "B41",
+    name: "Sicilian Defense: Kan Variation",
+  },
+  {
+    moves: ["e4", "c5", "Nf3", "Nc6", "d4", "cxd4", "Nxd4"],
+    eco: "B32",
+    name: "Sicilian Defense: Open",
+  },
+  { moves: ["e4", "c5", "c3"], eco: "B22", name: "Sicilian Defense: Alapin Variation" },
+  { moves: ["e4", "c5", "Nc3"], eco: "B23", name: "Sicilian Defense: Closed" },
+  { moves: ["e4", "c5"], eco: "B20", name: "Sicilian Defense" },
+
+  // Ruy Lopez & Italian Game
+  {
+    moves: ["e4", "e5", "Nf3", "Nc6", "Bb5", "a6", "Ba4", "Nf6", "O-O", "Be7"],
+    eco: "C84",
+    name: "Ruy Lopez: Closed",
+  },
+  { moves: ["e4", "e5", "Nf3", "Nc6", "Bb5", "a6"], eco: "C70", name: "Ruy Lopez: Morphy Defense" },
+  {
+    moves: ["e4", "e5", "Nf3", "Nc6", "Bb5", "Nf6"],
+    eco: "C65",
+    name: "Ruy Lopez: Berlin Defense",
+  },
+  { moves: ["e4", "e5", "Nf3", "Nc6", "Bb5"], eco: "C60", name: "Ruy Lopez" },
+  {
+    moves: ["e4", "e5", "Nf3", "Nc6", "Bc4", "Bc5"],
+    eco: "C50",
+    name: "Giuoco Piano (Italian Game)",
+  },
+  {
+    moves: ["e4", "e5", "Nf3", "Nc6", "Bc4", "Nf6"],
+    eco: "C55",
+    name: "Italian Game: Two Knights Defense",
+  },
+  { moves: ["e4", "e5", "Nf3", "Nc6", "Bc4"], eco: "C50", name: "Italian Game" },
+  { moves: ["e4", "e5", "Nf3", "Nc6", "d4"], eco: "C44", name: "Scotch Game" },
+  { moves: ["e4", "e5", "Nf3", "Nf6"], eco: "C42", name: "Petrov's Defense" },
+  { moves: ["e4", "e5"], eco: "C20", name: "Open Game (King's Pawn)" },
+
+  // French & Caro-Kann
+  { moves: ["e4", "e6", "d4", "d5", "e5"], eco: "C02", name: "French Defense: Advance Variation" },
+  { moves: ["e4", "e6", "d4", "d5", "Nc3"], eco: "C10", name: "French Defense: Paulsen Variation" },
+  {
+    moves: ["e4", "e6", "d4", "d5", "Nd2"],
+    eco: "C03",
+    name: "French Defense: Tarrasch Variation",
+  },
+  { moves: ["e4", "e6"], eco: "C00", name: "French Defense" },
+  {
+    moves: ["e4", "c6", "d4", "d5", "e5"],
+    eco: "B12",
+    name: "Caro-Kann Defense: Advance Variation",
+  },
+  {
+    moves: ["e4", "c6", "d4", "d5", "Nc3", "dxe4", "Nxe4"],
+    eco: "B18",
+    name: "Caro-Kann Defense: Classical",
+  },
+  { moves: ["e4", "c6"], eco: "B10", name: "Caro-Kann Defense" },
+
+  // Queen's Gambit & Indian Defenses
+  { moves: ["d4", "d5", "c4", "e6", "Nc3", "Nf6"], eco: "D30", name: "Queen's Gambit Declined" },
+  { moves: ["d4", "d5", "c4", "c6"], eco: "D10", name: "Slav Defense" },
+  { moves: ["d4", "d5", "c4", "dxc4"], eco: "D20", name: "Queen's Gambit Accepted" },
+  { moves: ["d4", "d5", "c4"], eco: "D06", name: "Queen's Gambit" },
+  { moves: ["d4", "d5", "Nf3", "Nf6", "Bf4"], eco: "D02", name: "London System" },
+  { moves: ["d4", "Nf6", "c4", "g6", "Nc3", "Bg7"], eco: "E60", name: "King's Indian Defense" },
+  { moves: ["d4", "Nf6", "c4", "e6", "Nc3", "Bb4"], eco: "E20", name: "Nimzo-Indian Defense" },
+  { moves: ["d4", "Nf6", "c4", "c5", "d5"], eco: "A56", name: "Benoni Defense" },
+  { moves: ["d4", "Nf6"], eco: "A45", name: "Indian Defense" },
+  { moves: ["d4", "d5"], eco: "D00", name: "Queen's Pawn Game" },
+
+  // Flank Openings
+  { moves: ["c4", "e5"], eco: "A20", name: "English Opening: King's English" },
+  { moves: ["c4"], eco: "A10", name: "English Opening" },
+  { moves: ["Nf3"], eco: "A04", name: "Réti Opening" },
+];
+
+/**
+ * Identify the closest opening name and ECO code from a list of SAN moves.
+ */
+export function identifyOpening(moves: string[]): RecognizedOpening {
+  if (!moves || moves.length === 0) {
+    return { eco: "A00", name: "Starting Position" };
+  }
+
+  // Find longest matching prefix
+  let bestMatch: { moves: string[]; eco: string; name: string } | null = null;
+  let maxMatched = 0;
+
+  for (const entry of OPENING_DATABASE) {
+    if (entry.moves.length <= moves.length) {
+      const matches = entry.moves.every((m, idx) => m.toLowerCase() === moves[idx].toLowerCase());
+      if (matches && entry.moves.length > maxMatched) {
+        bestMatch = entry;
+        maxMatched = entry.moves.length;
+      }
+    }
+  }
+
+  if (bestMatch) {
+    return {
+      eco: bestMatch.eco,
+      name: bestMatch.name,
+    };
+  }
+
+  return {
+    eco: "A00",
+    name: `Custom Line (${moves.slice(0, 3).join(" ")})`,
+  };
+}

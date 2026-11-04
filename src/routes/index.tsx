@@ -79,14 +79,30 @@ function Dashboard() {
       <Panel title="Variations" className="mt-6">
         <div className="divide-y divide-border">
           {savedVariations.map((v) => (
-            <div key={v.id} className="flex items-center justify-between py-3">
-              <div>
-                <p className="font-medium">{v.name}</p>
+            <div key={v.id} className="flex flex-wrap items-center justify-between gap-3 py-3">
+              <div className="space-y-1">
+                <div className="flex items-center gap-2">
+                  {v.eco && (
+                    <span className="rounded bg-primary/20 px-1.5 py-0.5 font-mono text-[11px] font-semibold text-primary">
+                      {v.eco}
+                    </span>
+                  )}
+                  <p className="font-semibold text-foreground text-sm">{v.name}</p>
+                </div>
                 <p className="font-mono text-xs text-muted-foreground">
-                  {v.moves.join(" ") || "—"}
+                  {v.moves.slice(0, 6).join(" ")}
+                  {v.moves.length > 6 ? "..." : ""} ({v.moves.length} ply)
                 </p>
               </div>
-              <span className="rounded bg-success/15 px-2 py-0.5 text-xs text-success">New</span>
+
+              <div className="flex items-center gap-2">
+                <span className="rounded-md bg-secondary border border-border px-2 py-1 font-mono text-xs text-muted-foreground">
+                  {v.games?.length || v.gameCount || 0} GM games
+                </span>
+                <Button asChild size="sm" variant="default" className="text-xs">
+                  <Link to="/middlegame/guess-the-move">Train Line</Link>
+                </Button>
+              </div>
             </div>
           ))}
           {repertoire.map((r) => (

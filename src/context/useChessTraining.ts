@@ -10,6 +10,7 @@ import {
   createElement,
   useCallback,
   useContext,
+  useEffect,
   useMemo,
   useRef,
   useState,
@@ -22,6 +23,15 @@ import {
   generateLocalExplanation,
   type MoveClassification,
 } from "../services/explanationPrompt";
+import {
+  deleteVariationRecord,
+  getAllVariations,
+  saveVariationRecord,
+  type PracticalEndgameTarget,
+  type SavedVariation,
+  type ScrapedGame,
+} from "../services/repertoireStorage";
+import { identifyOpening } from "../utils/openingNames";
 
 export const START_FEN = "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1";
 
@@ -33,14 +43,7 @@ export interface EngineEval {
   depth: number;
 }
 
-export interface SavedVariation {
-  id: string;
-  name: string;
-  pgn: string;
-  finalFen: string;
-  moves: string[];
-  createdAt: string;
-}
+export type { PracticalEndgameTarget, SavedVariation, ScrapedGame };
 
 interface ChessTrainingContextValue {
   fen: string;
@@ -52,13 +55,22 @@ interface ChessTrainingContextValue {
   explanation: string | null;
   lastClassification: MoveClassification | null;
   savedVariations: SavedVariation[];
+  activeVariation: SavedVariation | null;
+  setActiveVariation: (v: SavedVariation | null) => void;
   makeMove: (from: string, to: string) => boolean;
   undo: () => void;
   reset: (fen?: string) => void;
   flip: () => void;
   loadFen: (fen: string) => void;
   getPgn: () => string;
-  saveVariation: (name: string) => SavedVariation;
+  saveVariation: (name?: string) => Promise<SavedVariation>;
+  deleteVariation: (id: string) => Promise<void>;
+  updateVariationGames: (
+    id: string,
+    games: ScrapedGame[],
+    endgames: PracticalEndgameTarget[],
+  ) => Promise<void>;
+  refreshVariations: () => Promise<void>;
   requestEvaluation: () => Promise<EngineEval>;
 }
 
@@ -79,6 +91,26 @@ export function ChessTrainingProvider({ children }: { children: ReactNode }) {
   const [explanation, setExplanation] = useState<string | null>(null);
   const [lastClassification, setLastClassification] = useState<MoveClassification | null>(null);
   const [savedVariations, setSavedVariations] = useState<SavedVariation[]>([]);
+  const [activeVariation, setActiveVariation] = useState<SavedVariation | null>(null);
+
+  // Hydrate saved variations from IndexedDB / localStorage on client mount
+  useEffect(() => {
+    getAllVariations()
+      .then((vars) => {
+        setSavedVariations(vars);
+        if (vars.length > 0) {
+          setActiveVariation(vars[0]);
+        }
+      })
+      .catch((err) => {
+        console.warn("Could not load saved variations from storage:", err);
+      });
+  }, []);
+
+  const refreshVariations = useCallback(async () => {
+    const vars = await getAllVariations();
+    setSavedVariations(vars);
+  }, []);
 
   const sync = useCallback(() => {
     setFen(gameRef.current.fen());
@@ -184,18 +216,74 @@ export function ChessTrainingProvider({ children }: { children: ReactNode }) {
   const flip = useCallback(() => setOrientation((o) => (o === "white" ? "black" : "white")), []);
   const getPgn = useCallback(() => gameRef.current.pgn(), []);
 
-  const saveVariation = useCallback((name: string) => {
-    const v: SavedVariation = {
-      id: crypto.randomUUID(),
-      name,
-      pgn: gameRef.current.pgn(),
-      finalFen: gameRef.current.fen(),
-      moves: gameRef.current.history(),
-      createdAt: new Date().toISOString(),
-    };
-    setSavedVariations((prev) => [v, ...prev]);
-    return v;
+  const saveVariation = useCallback(
+    async (customName?: string) => {
+      const historyMoves = gameRef.current.history();
+      const opening = identifyOpening(historyMoves);
+      const finalName = customName?.trim() || `${opening.name} (${historyMoves.length} moves)`;
+
+      const v: SavedVariation = {
+        id: crypto.randomUUID(),
+        name: finalName,
+        eco: opening.eco,
+        openingName: opening.name,
+        pgn: gameRef.current.pgn(),
+        finalFen: gameRef.current.fen(),
+        moves: historyMoves,
+        color: orientation,
+        createdAt: new Date().toISOString(),
+        gameCount: 0,
+        games: [],
+        endgames: [],
+      };
+
+      await saveVariationRecord(v);
+      setSavedVariations((prev) => [v, ...prev.filter((i) => i.id !== v.id)]);
+      setActiveVariation(v);
+      return v;
+    },
+    [orientation],
+  );
+
+  const deleteVariation = useCallback(async (id: string) => {
+    await deleteVariationRecord(id);
+    setSavedVariations((prev) => prev.filter((item) => item.id !== id));
+    setActiveVariation((current) => (current?.id === id ? null : current));
   }, []);
+
+  const updateVariationGames = useCallback(
+    async (id: string, games: ScrapedGame[], endgames: PracticalEndgameTarget[]) => {
+      setSavedVariations((prev) => {
+        const updatedList = prev.map((item) => {
+          if (item.id === id) {
+            const updated = {
+              ...item,
+              gameCount: games.length,
+              games,
+              endgames,
+            };
+            saveVariationRecord(updated);
+            return updated;
+          }
+          return item;
+        });
+        return updatedList;
+      });
+
+      setActiveVariation((current) => {
+        if (current && current.id === id) {
+          return {
+            ...current,
+            gameCount: games.length,
+            games,
+            endgames,
+          };
+        }
+        return current;
+      });
+    },
+    [],
+  );
 
   const requestEvaluation = useCallback(async () => {
     return runAnalysis(gameRef.current.fen());
@@ -212,6 +300,8 @@ export function ChessTrainingProvider({ children }: { children: ReactNode }) {
       explanation,
       lastClassification,
       savedVariations,
+      activeVariation,
+      setActiveVariation,
       makeMove,
       undo,
       reset,
@@ -219,6 +309,9 @@ export function ChessTrainingProvider({ children }: { children: ReactNode }) {
       loadFen,
       getPgn,
       saveVariation,
+      deleteVariation,
+      updateVariationGames,
+      refreshVariations,
       requestEvaluation,
     }),
     [
@@ -231,6 +324,7 @@ export function ChessTrainingProvider({ children }: { children: ReactNode }) {
       explanation,
       lastClassification,
       savedVariations,
+      activeVariation,
       makeMove,
       undo,
       reset,
@@ -238,6 +332,9 @@ export function ChessTrainingProvider({ children }: { children: ReactNode }) {
       loadFen,
       getPgn,
       saveVariation,
+      deleteVariation,
+      updateVariationGames,
+      refreshVariations,
       requestEvaluation,
     ],
   );

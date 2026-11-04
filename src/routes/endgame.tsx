@@ -8,6 +8,7 @@ import { ChessBoard } from "@/components/chess/ChessBoard";
 import { DataSourceBadge, PageHeader, Panel, TrainingLayout } from "@/components/chess/ui";
 import { demonstrationSteps, practicalEndgames, theoreticalEndgames } from "@/lib/mock-data";
 import { cn } from "@/lib/utils";
+import { useChessTraining } from "@/context/useChessTraining";
 
 export const Route = createFileRoute("/endgame")({
   head: () => ({
@@ -30,15 +31,48 @@ export const Route = createFileRoute("/endgame")({
 type Mode = "theoretical" | "practical";
 
 function Endgame() {
+  const { savedVariations } = useChessTraining();
   const [mode, setMode] = useState<Mode>("theoretical");
   const [theoId, setTheoId] = useState(theoreticalEndgames[1]?.id ?? "kp");
-  const [pracId, setPracId] = useState(practicalEndgames[0]?.id ?? "p1");
+
+  // Merge dynamic practical endgames extracted from saved repertoire with curated defaults
+  const practicalList = useMemo(() => {
+    const repertoireItems: {
+      id: string;
+      title: string;
+      players: string;
+      target: "Convert the Win" | "Force a Draw";
+      fen: string;
+      isRepertoire?: boolean;
+      repertoireName?: string;
+    }[] = [];
+
+    for (const v of savedVariations) {
+      if (v.endgames && v.endgames.length > 0) {
+        for (const eg of v.endgames) {
+          repertoireItems.push({
+            id: eg.id,
+            title: `Move ${eg.moveNumber} · ${eg.target}`,
+            players: `${eg.players}`,
+            target: eg.target,
+            fen: eg.fen,
+            isRepertoire: true,
+            repertoireName: v.name,
+          });
+        }
+      }
+    }
+
+    return [...repertoireItems, ...practicalEndgames];
+  }, [savedVariations]);
+
+  const [pracId, setPracId] = useState(practicalList[0]?.id ?? "p1");
   const [demoOpen, setDemoOpen] = useState(false); // ANTIGRAVITY HOOK: set true when the user fails a position.
 
   const initialFen =
     mode === "theoretical"
       ? (theoreticalEndgames.find((e) => e.id === theoId)?.fen ?? "")
-      : (practicalEndgames.find((e) => e.id === pracId)?.fen ?? "");
+      : (practicalList.find((e) => e.id === pracId)?.fen ?? practicalEndgames[0]?.fen ?? "");
 
   const [currentFen, setCurrentFen] = useState(initialFen);
   const [isBotThinking, setIsBotThinking] = useState(false);
@@ -221,9 +255,9 @@ function Endgame() {
                   "// ANTIGRAVITY DATA SOURCE: Real endings from master games that passed through my openings."
                 }
               </DataSourceBadge>
-              <Panel title="Playlist">
+              <Panel title={`Playlist (${practicalList.length} positions)`}>
                 <ul className="space-y-2">
-                  {practicalEndgames.map((e, i) => (
+                  {practicalList.map((e, i) => (
                     <li key={e.id}>
                       <button
                         onClick={() => setPracId(e.id)}
@@ -235,8 +269,17 @@ function Endgame() {
                         <span className="w-5 font-mono text-xs text-muted-foreground">{i + 1}</span>
                         <PlayCircle className="h-5 w-5 shrink-0 text-primary" />
                         <span className="min-w-0 flex-1">
-                          <span className="block truncate font-medium">{e.title}</span>
-                          <span className="text-xs text-muted-foreground">{e.players}</span>
+                          <div className="flex items-center gap-1.5">
+                            <span className="block truncate font-medium">{e.title}</span>
+                            {e.isRepertoire && (
+                              <span className="rounded bg-primary/20 px-1.5 py-0.2 text-[10px] font-semibold text-primary shrink-0">
+                                Repertoire
+                              </span>
+                            )}
+                          </div>
+                          <span className="text-xs text-muted-foreground truncate block">
+                            {e.players}
+                          </span>
                         </span>
                         <span
                           className={cn(
