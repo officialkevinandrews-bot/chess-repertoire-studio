@@ -150,6 +150,7 @@ export async function saveVariationRecord(v: SavedVariation): Promise<void> {
 
 /**
  * Delete a variation by ID.
+ * Permanently removes the variation and all associated scraped master games and endgames.
  */
 export async function deleteVariationRecord(id: string): Promise<void> {
   try {
@@ -162,14 +163,19 @@ export async function deleteVariationRecord(id: string): Promise<void> {
       request.onerror = () => reject(request.error);
     });
   } catch {
-    // Ignore
+    // Ignore IndexedDB error, proceed to localStorage cleanup
   }
 
   if (typeof window !== "undefined" && window.localStorage) {
     try {
-      const existing = await getAllVariations();
-      const filtered = existing.filter((item) => item.id !== id);
-      window.localStorage.setItem(LS_BACKUP_KEY, JSON.stringify(filtered));
+      const raw = window.localStorage.getItem(LS_BACKUP_KEY);
+      if (raw) {
+        const parsed = JSON.parse(raw);
+        if (Array.isArray(parsed)) {
+          const filtered = parsed.filter((item: { id: string }) => item.id !== id);
+          window.localStorage.setItem(LS_BACKUP_KEY, JSON.stringify(filtered));
+        }
+      }
     } catch {
       // Ignore
     }

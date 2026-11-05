@@ -9,7 +9,11 @@ import {
 import { Chess } from "chess.js";
 import {
   DEFAULT_LICHESS_TOKEN,
+  deleteVariationRecord,
+  getAllVariations,
   getStoredLichessToken,
+  saveVariationRecord,
+  type SavedVariation,
   type ScrapedGame,
 } from "../services/repertoireStorage";
 
@@ -142,5 +146,74 @@ describe("Phase 2: Opening Identification & Repertoire Scraper", () => {
     // Pool contains variety of match types for deep pattern recognition
     const matchTypes = new Set(result.games.map((g) => g.matchType));
     expect(matchTypes.size).toBeGreaterThan(0);
+  });
+
+  it("saves an opening line and deletes it completely along with all associated games and endgames", async () => {
+    const mockVariation: SavedVariation = {
+      id: "test-variation-delete-123",
+      name: "Najdorf Scraped Test Line",
+      eco: "B90",
+      openingName: "Sicilian Defense: Najdorf Variation",
+      pgn: "1. e4 c5 2. Nf3 d6 3. d4 cxd4 4. Nxd4 Nf6 5. Nc3 a6",
+      finalFen: "rnbqkb1r/1p2pppp/p2p1n2/8/3NP3/2N5/PPP2PPP/R1BQKB1R w KQkq - 0 6",
+      moves: ["e4", "c5", "Nf3", "d6", "d4", "cxd4", "Nxd4", "Nf6", "Nc3", "a6"],
+      color: "white",
+      createdAt: new Date().toISOString(),
+      gameCount: 2,
+      games: [
+        {
+          id: "game-to-purge-1",
+          white: { name: "Kasparov", rating: 2800, title: "GM" },
+          black: { name: "Karpov", rating: 2750, title: "GM" },
+          winner: "white",
+          year: 1990,
+          plyCount: 40,
+          movesSan: ["e4", "c5"],
+          pgn: "",
+          fenAtVariation: "",
+          accuracyScore: 98,
+          matchType: "exact",
+        },
+        {
+          id: "game-to-purge-2",
+          white: { name: "Anand", rating: 2790, title: "GM" },
+          black: { name: "Topalov", rating: 2780, title: "GM" },
+          winner: "white",
+          year: 2005,
+          plyCount: 42,
+          movesSan: ["e4", "c5"],
+          pgn: "",
+          fenAtVariation: "",
+          accuracyScore: 96,
+          matchType: "transposition",
+        },
+      ],
+      endgames: [
+        {
+          id: "endgame-to-purge-1",
+          players: "Kasparov – Karpov, 1990",
+          target: "Convert the Win",
+          fen: "8/8/8/8/4k3/8/4K3/8 w - - 0 1",
+          moveNumber: 40,
+        },
+      ],
+    };
+
+    await saveVariationRecord(mockVariation);
+    const afterSave = await getAllVariations();
+    expect(afterSave.some((v) => v.id === mockVariation.id)).toBe(true);
+
+    // Now delete the variation
+    await deleteVariationRecord(mockVariation.id);
+
+    const afterDelete = await getAllVariations();
+    expect(afterDelete.some((v) => v.id === mockVariation.id)).toBe(false);
+
+    // Verify all associated games and endgames are completely purged from the repertoire pool
+    const remainingGames = afterDelete.flatMap((v) => v.games || []);
+    const remainingEndgames = afterDelete.flatMap((v) => v.endgames || []);
+    expect(remainingGames.some((g) => g.id === "game-to-purge-1")).toBe(false);
+    expect(remainingGames.some((g) => g.id === "game-to-purge-2")).toBe(false);
+    expect(remainingEndgames.some((e) => e.id === "endgame-to-purge-1")).toBe(false);
   });
 });

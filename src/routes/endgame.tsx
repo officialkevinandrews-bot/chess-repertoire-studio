@@ -78,6 +78,13 @@ function Endgame() {
   const [isBotThinking, setIsBotThinking] = useState(false);
   const [botMessage, setBotMessage] = useState<string | null>(null);
 
+  // Reset practical selection if currently selected endgame was purged
+  useEffect(() => {
+    if (!practicalList.some((e) => e.id === pracId)) {
+      setPracId(practicalList[0]?.id ?? "p1");
+    }
+  }, [practicalList, pracId]);
+
   // Sync board when selection changes
   useEffect(() => {
     setCurrentFen(initialFen);

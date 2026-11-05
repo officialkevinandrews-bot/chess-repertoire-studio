@@ -1,6 +1,6 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { useMemo, useState } from "react";
-import { FlipVertical2, Loader2, RotateCcw, Save, Sparkles, Undo2 } from "lucide-react";
+import { FlipVertical2, Loader2, RotateCcw, Save, Sparkles, Trash2, Undo2 } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -46,6 +46,8 @@ function OpeningCreator() {
     reset,
     flip,
     saveVariation,
+    deleteVariation,
+    savedVariations,
     updateVariationGames,
     analysis,
     isEngineThinking,
@@ -56,6 +58,13 @@ function OpeningCreator() {
   const [exported, setExported] = useState<string | null>(null);
   const [isScraping, setIsScraping] = useState(false);
   const [scraperStatus, setScraperStatus] = useState<ScraperProgress | null>(null);
+
+  const handleDeleteSavedLine = async (id: string, lineName: string) => {
+    await deleteVariation(id);
+    toast.success(`Deleted line "${lineName}"`, {
+      description: "All scraped master games and practical endgames were removed.",
+    });
+  };
 
   // Auto-detect opening and ECO from moves played
   const recognized = useMemo(() => identifyOpening(history), [history]);
@@ -183,6 +192,42 @@ function OpeningCreator() {
             )}
           </Button>
         </div>
+
+        {/* Saved Repertoire Lines Manager */}
+        {savedVariations.length > 0 && (
+          <Panel title={`My Saved Repertoire (${savedVariations.length} lines)`}>
+            <div className="space-y-2 max-h-56 overflow-y-auto pr-1">
+              {savedVariations.map((v) => (
+                <div
+                  key={v.id}
+                  className="flex items-center justify-between gap-2 rounded-lg border border-border bg-card p-2.5 text-xs animate-in fade-in"
+                >
+                  <div className="min-w-0 flex-1">
+                    <div className="flex items-center gap-1.5">
+                      <span className="rounded bg-primary/20 px-1 py-0.2 font-mono text-[10px] font-bold text-primary">
+                        {v.eco || "ECO"}
+                      </span>
+                      <span className="font-medium truncate">{v.name}</span>
+                    </div>
+                    <span className="text-[11px] text-muted-foreground font-mono">
+                      {v.games?.length || 0} master games · {v.endgames?.length || 0} endgames
+                    </span>
+                  </div>
+                  <Button
+                    size="sm"
+                    variant="ghost"
+                    className="h-7 w-7 p-0 text-muted-foreground hover:text-destructive hover:bg-destructive/10"
+                    onClick={() => handleDeleteSavedLine(v.id, v.name)}
+                    title="Delete opening line and associated games"
+                    aria-label={`Delete ${v.name}`}
+                  >
+                    <Trash2 className="h-3.5 w-3.5" />
+                  </Button>
+                </div>
+              ))}
+            </div>
+          </Panel>
+        )}
 
         {/* Scraper Progress Notification */}
         {scraperStatus && (

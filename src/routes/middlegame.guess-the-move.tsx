@@ -7,9 +7,11 @@ import {
   GraduationCap,
   RotateCcw,
   Sparkles,
+  Trash2,
   Trophy,
   XCircle,
 } from "lucide-react";
+import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { ChessBoard } from "@/components/chess/ChessBoard";
 import { DataSourceBadge, PageHeader, Panel, TrainingLayout } from "@/components/chess/ui";
@@ -39,7 +41,8 @@ export const Route = createFileRoute("/middlegame/guess-the-move")({
 
 // ANTIGRAVITY DATA SOURCE: Pull full Grandmaster games matching the Opening Creator's FEN, starting the guess-the-move loop from move 10-12 onward.
 function GuessTheMove() {
-  const { savedVariations, activeVariation, setActiveVariation } = useChessTraining();
+  const { savedVariations, activeVariation, setActiveVariation, deleteVariation } =
+    useChessTraining();
 
   // Find variation with games, or active variation, or fallback
   const currentVar =
@@ -52,8 +55,9 @@ function GuessTheMove() {
   const [playedMoveSan, setPlayedMoveSan] = useState<string | null>(null);
   const [moveStatus, setMoveStatus] = useState<"idle" | "correct" | "alternative">("idle");
 
-  // Determine active game
-  const activeGame = currentVar?.games?.[gameIdx];
+  // Determine active game with index clamping
+  const activeGame =
+    currentVar?.games?.[Math.min(gameIdx, Math.max(0, (currentVar.games.length || 1) - 1))];
 
   // Replay game up to the variation's terminal ply
   const { initialFen, expectedMoveSan, currentFen, chess } = useMemo(() => {
@@ -147,16 +151,60 @@ function GuessTheMove() {
         title="Guess the Move"
         description={`${gameTitle} — from move ${moveNum}`}
         right={
-          currentVar?.games && currentVar.games.length > 1 ? (
-            <div className="flex items-center gap-2">
-              <span className="font-mono text-xs text-muted-foreground">
-                Game {gameIdx + 1} of {currentVar.games.length}
-              </span>
-              <Button size="sm" variant="outline" onClick={nextGame}>
-                Next GM Game <ChevronRight className="h-4 w-4 ml-1" />
+          <div className="flex flex-wrap items-center gap-2">
+            {savedVariations.length > 1 && (
+              <select
+                value={currentVar?.id || ""}
+                onChange={(e) => {
+                  const target = savedVariations.find((v) => v.id === e.target.value);
+                  if (target) {
+                    setActiveVariation(target);
+                    setGameIdx(0);
+                    resetGame();
+                  }
+                }}
+                className="h-8 rounded-md border border-border bg-card px-2 text-xs font-medium"
+              >
+                {savedVariations.map((v) => (
+                  <option key={v.id} value={v.id}>
+                    {v.name} ({v.games?.length || 0} games)
+                  </option>
+                ))}
+              </select>
+            )}
+
+            {currentVar && (
+              <Button
+                variant="ghost"
+                size="sm"
+                className="h-8 text-xs text-muted-foreground hover:text-destructive hover:bg-destructive/10"
+                onClick={async () => {
+                  const name = currentVar.name;
+                  await deleteVariation(currentVar.id);
+                  toast.success(`Deleted line "${name}"`, {
+                    description: "All scraped master games and practical endgames were removed.",
+                  });
+                  setGameIdx(0);
+                  resetGame();
+                }}
+                title="Delete this opening line and its games"
+              >
+                <Trash2 className="h-3.5 w-3.5 mr-1" /> Delete Line
               </Button>
-            </div>
-          ) : undefined
+            )}
+
+            {currentVar?.games && currentVar.games.length > 1 ? (
+              <div className="flex items-center gap-2">
+                <span className="font-mono text-xs text-muted-foreground">
+                  Game {Math.min(gameIdx, currentVar.games.length - 1) + 1} of{" "}
+                  {currentVar.games.length}
+                </span>
+                <Button size="sm" variant="outline" onClick={nextGame}>
+                  Next GM Game <ChevronRight className="h-4 w-4 ml-1" />
+                </Button>
+              </div>
+            ) : undefined}
+          </div>
         }
       />
 
