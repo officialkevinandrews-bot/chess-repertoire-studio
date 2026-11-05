@@ -122,11 +122,44 @@ function Tactics() {
   // Hydrate progress and stored puzzles on mount (strictly filter out any legacy seed- placeholders)
   useEffect(() => {
     getTacticsProgress().then((p) => setProgress(p));
-    getTacticsPuzzles().then((saved) => {
+    getTacticsPuzzles().then(async (saved) => {
       const realPuzzles = (saved || []).filter((p) => !p.id.startsWith("seed-"));
       setAllPuzzles(realPuzzles);
+
+      // Check if user's line needs initial full 450-puzzle population
+      const targetVar = activeVariation || (savedVariations.length > 0 ? savedVariations[0] : null);
+      if (targetVar) {
+        const varPersp = targetVar.color || "black";
+        const forkCount = realPuzzles.filter(
+          (p) =>
+            p.primaryMotif === "Fork / Double Attack" &&
+            p.initialTurn === varPersp &&
+            (!p.openingVariationId || p.openingVariationId === targetVar.id),
+        ).length;
+
+        if (forkCount < 450) {
+          try {
+            const { newPuzzles } = await syncMotifTacticsBatch(
+              "Fork / Double Attack",
+              targetVar,
+              varPersp,
+              realPuzzles,
+              undefined,
+              50,
+            );
+            if (newPuzzles.length > 0) {
+              await saveTacticsPuzzles(newPuzzles);
+              const refreshed = await getTacticsPuzzles();
+              const clean = refreshed.filter((p) => !p.id.startsWith("seed-"));
+              setAllPuzzles(clean);
+            }
+          } catch {
+            // continue
+          }
+        }
+      }
     });
-  }, []);
+  }, [activeVariation, savedVariations]);
 
   // Sync perspective when opening variation selection changes
   const handleSelectVariation = (varId: string) => {

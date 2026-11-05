@@ -447,29 +447,6 @@ export function generateOpeningTacticsPool(
   const baseId = variation?.id || "rep";
   const motifSlug = motif.replace(/[^a-zA-Z0-9]/g, "").slice(0, 5).toLowerCase();
 
-  const devBranches =
-    perspective === "black"
-      ? [
-          ["Be3", "e5", "Nf3", "Be7"],
-          ["Bc4", "e6", "Bb3", "b5"],
-          ["f3", "e5", "Nb3", "Be6"],
-          ["Bg5", "e6", "Qd2", "Be7"],
-          ["Be2", "e5", "Nf3", "Be7"],
-          ["g3", "e6", "Bg2", "Be7"],
-          ["Bd3", "Nbd7", "O-O", "Qc7"],
-          ["a4", "b6", "Be2", "Bb7"],
-        ]
-      : [
-          ["d3", "d6", "O-O", "O-O"],
-          ["Re1", "Re8", "Nbd2", "a6"],
-          ["h3", "h6", "Bb3", "Ba7"],
-          ["a4", "Be6", "Bxe6", "fxe6"],
-          ["Nbd2", "Qe7", "Nf1", "Rad8"],
-          ["Be3", "Bxe3", "Nxe3", "d5"],
-          ["exd5", "Nxd5", "d4", "exd4"],
-          ["c3", "d5", "Bb3", "Be7"],
-        ];
-
   // Precompute base opening position once for instant instantiation
   const baseChess = new Chess();
   for (const m of openingMoves) {
@@ -480,35 +457,30 @@ export function generateOpeningTacticsPool(
     }
   }
   const baseFen = baseChess.fen();
+  const targetTurn = perspective === "black" ? "b" : "w";
 
-  for (let i = 0; items.length < countNeeded && i < 200; i++) {
+  for (let i = 0; items.length < countNeeded && i < 350; i++) {
     const puzzleId = `op-${baseId}-${perspective[0]}-${motifSlug}-L${targetLevel}-${i}`;
     if (existingIds.has(puzzleId)) continue;
 
     try {
       const chess = new Chess(baseFen);
 
-      // 2. Play development branch moves
-      const branch = devBranches[i % devBranches.length];
-      for (const m of branch) {
-        try {
-          chess.move(m);
-        } catch {
-          break;
-        }
+      // 2. Advance 2 to 12 plies into the natural middlegame branching from the opening
+      const depth = 2 + (i % 6) * 2;
+      for (let d = 0; d < depth; d++) {
+        const legal = chess.moves({ verbose: true });
+        if (legal.length === 0) break;
+        const seed = Math.floor(Math.abs(Math.sin(i * 17 + d * 31)) * legal.length);
+        chess.move(legal[seed].san);
       }
 
-      // 3. Ensure the active turn matches perspective
-      const targetTurn = perspective === "black" ? "b" : "w";
+      // 3. Ensure the active turn strictly matches perspective (e.g. Black)
       if (chess.turn() !== targetTurn) {
         const legal = chess.moves({ verbose: true });
         if (legal.length === 0) continue;
-        const oppMove = legal[(i * 3 + 1) % legal.length];
-        try {
-          chess.move(oppMove.san);
-        } catch {
-          continue;
-        }
+        const oppSeed = (i * 5 + 1) % legal.length;
+        chess.move(legal[oppSeed].san);
       }
 
       if (chess.turn() !== targetTurn) continue;
@@ -574,7 +546,7 @@ export function generateOpeningTacticsPool(
       }
 
       if (hasMate || sanMoves.length === 0) continue;
-      if (targetLevel === 1 && sanMoves.length > 2) {
+      if (targetLevel === 1 && sanMoves.length > 1) {
         sanMoves.length = 1;
         lanMoves.length = 1;
       }
@@ -601,7 +573,7 @@ export function generateOpeningTacticsPool(
         players: `${whitePlayer} vs ${blackPlayer}`,
         openingVariationId: variation?.id,
         openingName: variation?.name || "Opening Repertoire",
-        explanation: `Level ${targetLevel} (${tierName}) ${perspective.toUpperCase()} ${motif} combination arising directly from ${variation?.name || "the opening line"}. Play the winning sequence.`,
+        explanation: `Level ${targetLevel} (${tierName}) — ${targetLevel === 1 ? "1-move strike" : `${sanMoves.length}-move sequence`}. Spot the ${motif} and execute the winning tactic.`,
         isCheckmate: false,
       });
 
