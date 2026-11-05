@@ -22,11 +22,23 @@ import {
   Sword,
   Target,
   Trophy,
+  Volume2,
+  VolumeX,
   X,
   XCircle,
   Zap,
 } from "lucide-react";
 import { toast } from "sonner";
+import {
+  isSoundEnabled,
+  toggleSound,
+  playMoveSound,
+  playCaptureSound,
+  playCheckSound,
+  playSuccessSound,
+  playErrorSound,
+  playCelebrationSound,
+} from "@/utils/chessAudio";
 import { Button } from "@/components/ui/button";
 import { Progress } from "@/components/ui/progress";
 import { ChessBoard } from "@/components/chess/ChessBoard";
@@ -156,7 +168,21 @@ function Tactics() {
           (p) => p.primaryMotif !== "Fork / Double Attack",
         );
 
-        const fullCatalog = [...supplementedForks, ...nonForkPuzzles];
+        const targetVar = activeVariation || (savedVariations.length > 0 ? savedVariations[0] : null);
+        const activeVarId = targetVar?.id || "user-pirc";
+        const activeVarName = targetVar?.name || "Pirc Defense";
+
+        const fullCatalog = [...supplementedForks, ...nonForkPuzzles].map((p) => {
+          if (!p.openingVariationId || p.openingVariationId === "user-pirc") {
+            return {
+              ...p,
+              openingVariationId: activeVarId,
+              openingName: activeVarName,
+            };
+          }
+          return p;
+        });
+
         await saveTacticsPuzzles(fullCatalog);
         setAllPuzzles(fullCatalog);
       } else {
@@ -175,11 +201,13 @@ function Tactics() {
       }
     }
     setActivePuzzleIndex(0);
+    setIsRemedialFilterActive(false);
   };
 
   const handlePerspectiveToggle = (newPersp: "white" | "black") => {
     setPerspective(newPersp);
     setActivePuzzleIndex(0);
+    setIsRemedialFilterActive(false);
   };
 
   // Filter puzzles by perspective and opening line
@@ -190,13 +218,18 @@ function Tactics() {
       if (
         selectedVariationId !== "all" &&
         p.openingVariationId &&
-        p.openingVariationId !== selectedVariationId
+        p.openingVariationId !== selectedVariationId &&
+        !(
+          p.openingVariationId === "user-pirc" &&
+          (selectedVariation?.name?.toLowerCase()?.includes("pirc") ||
+            selectedVariation?.moves?.join(" ")?.includes("d6"))
+        )
       ) {
         return false;
       }
       return !p.isCheckmate;
     });
-  }, [allPuzzles, perspective, selectedVariationId]);
+  }, [allPuzzles, perspective, selectedVariationId, selectedVariation]);
 
   // Compute counts per motif for active perspective
   const puzzleCountsByMotif = useMemo(() => {
@@ -228,12 +261,34 @@ function Tactics() {
     return null;
   }, [selectedMotif, puzzleCountsByMotif]);
 
-  // Filter puzzles matching active selected motif, ordered strictly by Tier Level ascending (L1 -> L9)
-  const motifPuzzles = useMemo(() => {
+  // Remedial Drill Mode state & audio state
+  const [isRemedialFilterActive, setIsRemedialFilterActive] = useState(false);
+  const [soundEnabled, setSoundEnabledState] = useState(() => isSoundEnabled());
+
+  // Current motif's missed tactic IDs in remedial queue
+  const currentMotifRemedialIds = useMemo(() => {
+    return progress.motifProgress[selectedMotif]?.remedialQueue || [];
+  }, [progress, selectedMotif]);
+
+  // All puzzles matching active selected motif, ordered strictly by Tier Level ascending (L1 -> L9)
+  const baseMotifPuzzles = useMemo(() => {
     return perspectivePuzzles
       .filter((p) => p.primaryMotif === selectedMotif)
       .sort((a, b) => a.tierLevel - b.tierLevel || a.rating - b.rating);
   }, [perspectivePuzzles, selectedMotif]);
+
+  // Missed puzzles for the active motif
+  const missedPuzzlesInMotif = useMemo(() => {
+    return baseMotifPuzzles.filter((p) => currentMotifRemedialIds.includes(p.id));
+  }, [baseMotifPuzzles, currentMotifRemedialIds]);
+
+  // When Remedial Drill Mode is active, restrict to only missed puzzles!
+  const motifPuzzles = useMemo(() => {
+    if (isRemedialFilterActive && missedPuzzlesInMotif.length > 0) {
+      return missedPuzzlesInMotif;
+    }
+    return baseMotifPuzzles;
+  }, [baseMotifPuzzles, isRemedialFilterActive, missedPuzzlesInMotif]);
 
   // Current active puzzle (null if unsynced or 0 puzzles for this motif)
   const currentPuzzle = useMemo<TacticsPuzzleItem | null>(() => {
@@ -478,6 +533,7 @@ function Tactics() {
     const updated = unlockNextGlobalTier(progress, tierSummary);
     await saveTacticsProgress(updated);
     setProgress(updated);
+    playCelebrationSound();
     toast.success(`🎉 Level ${updated.activeGlobalTier} Unlocked!`, {
       description: `Welcome to ${TACTICAL_TIERS[updated.activeGlobalTier].name}.`,
     });
@@ -506,6 +562,12 @@ function Tactics() {
         const moveRes = chess.move({ from, to, promotion: "q" });
         if (!moveRes) return false;
 
+        if (moveCandidate.captured) {
+          playCaptureSound();
+        } else {
+          playMoveSound();
+        }
+
         setCurrentFen(chess.fen());
         setLastMoveHighlight({ from, to });
         const nextStep = stepIndex + 1;
@@ -520,6 +582,14 @@ function Tactics() {
               const oppSan = currentPuzzle.solutionPv[nextStep];
               const oppMove = chess.move(oppSan);
               if (oppMove) {
+                if (oppMove.captured) {
+                  playCaptureSound();
+                } else if (oppMove.san.includes("+")) {
+                  playCheckSound();
+                } else {
+                  playMoveSound();
+                }
+
                 setCurrentFen(chess.fen());
                 setLastMoveHighlight({ from: oppMove.from, to: oppMove.to });
                 setStepIndex(nextStep + 1);
@@ -543,6 +613,7 @@ function Tactics() {
         return true;
       } else {
         // STRICT STREAK RESET TO 0 ON ERROR (User Rule: Always reset to 0)
+        playErrorSound();
         setStatus("wrong");
         setFeedback("Incorrect move. The tactical sequence was broken.");
         recordTacticsAttempt(selectedMotif, currentPuzzle.id, false).then((updated) => {
@@ -562,20 +633,31 @@ function Tactics() {
     if (!currentPuzzle) return;
     setStatus("completed");
     setFeedback("Tactical combination solved flawlessly!");
+    playSuccessSound();
 
     // If clearing a remedial puzzle, remove from remedial queue
     if (isInRemedialQueue) {
       clearRemedialItem(selectedMotif, currentPuzzle.id).then((updated) => {
         setProgress(updated);
-        toast.success("Remedial Puzzle Cleared!", {
-          description: "One step closer to clearing your remedial queue.",
-        });
+        const remainingMissed = updated.motifProgress[selectedMotif]?.remedialQueue?.length || 0;
+        if (remainingMissed === 0) {
+          playCelebrationSound();
+          toast.success("🎉 All Missed Tactics Cleared!", {
+            description: `You have successfully cleared every missed tactic for ${selectedMotif}!`,
+          });
+          setIsRemedialFilterActive(false);
+        } else {
+          toast.success("Remedial Puzzle Cleared!", {
+            description: `${remainingMissed} missed tactic${remainingMissed > 1 ? "s" : ""} remaining for ${selectedMotif}.`,
+          });
+        }
       });
     } else {
       recordTacticsAttempt(selectedMotif, currentPuzzle.id, true).then((updated) => {
         setProgress(updated);
         const m = updated.motifProgress[selectedMotif];
         if (m.currentStreak === 20) {
+          playCelebrationSound();
           toast.success(`🏆 20-in-a-Row Streak Completed!`, {
             description: `${selectedMotif} cleared for Level ${progress.activeGlobalTier}!`,
           });
@@ -778,6 +860,55 @@ function Tactics() {
                   </div>
 
                   <div className="flex items-center gap-2">
+                    {missedPuzzlesInMotif.length > 0 && (
+                      <Button
+                        variant={isRemedialFilterActive ? "destructive" : "outline"}
+                        size="sm"
+                        onClick={() => {
+                          setIsRemedialFilterActive((prev) => !prev);
+                          setActivePuzzleIndex(0);
+                        }}
+                        className={cn(
+                          "h-7 text-xs font-semibold transition-all",
+                          isRemedialFilterActive
+                            ? "bg-amber-600 hover:bg-amber-700 text-white border-amber-600 shadow-sm"
+                            : "border-amber-500/40 text-amber-600 dark:text-amber-400 hover:bg-amber-500/10",
+                        )}
+                        title="Filter strictly to missed tactics for this motif"
+                      >
+                        <RotateCcw className="h-3 w-3 mr-1" />
+                        {isRemedialFilterActive
+                          ? `Exit Drill (${missedPuzzlesInMotif.length} left)`
+                          : `Retry Missed (${missedPuzzlesInMotif.length})`}
+                      </Button>
+                    )}
+
+                    <button
+                      type="button"
+                      onClick={() => {
+                        const next = toggleSound();
+                        setSoundEnabledState(next);
+                        if (next) playSuccessSound();
+                      }}
+                      className={cn(
+                        "rounded-md border p-1 text-[11px] font-mono transition-colors flex items-center justify-center cursor-pointer",
+                        soundEnabled
+                          ? "border-primary/40 bg-primary/10 text-primary"
+                          : "border-border text-muted-foreground hover:bg-muted/30",
+                      )}
+                      title={
+                        soundEnabled
+                          ? "Sound Effects Enabled (Click to Mute)"
+                          : "Sound Effects Muted (Click to Unmute)"
+                      }
+                    >
+                      {soundEnabled ? (
+                        <Volume2 className="h-3.5 w-3.5" />
+                      ) : (
+                        <VolumeX className="h-3.5 w-3.5 opacity-60" />
+                      )}
+                    </button>
+
                     <button
                       type="button"
                       onClick={() => setAutoAdvance((v) => !v)}
@@ -794,6 +925,32 @@ function Tactics() {
                     </button>
                   </div>
                 </div>
+
+                {/* Remedial Drill Mode Active Banner */}
+                {isRemedialFilterActive && (
+                  <div className="rounded-xl border border-amber-500/50 bg-amber-500/15 p-3 text-xs text-amber-700 dark:text-amber-300 flex items-center justify-between gap-2 animate-in fade-in">
+                    <div className="flex items-center gap-2">
+                      <AlertTriangle className="h-4 w-4 shrink-0 text-amber-500" />
+                      <span>
+                        <strong>Missed Tactics Drill Active:</strong> Drilling{" "}
+                        {missedPuzzlesInMotif.length} tactic
+                        {missedPuzzlesInMotif.length > 1 ? "s" : ""} you missed in{" "}
+                        <strong>{selectedMotif}</strong>. Solve each one to clear your review queue!
+                      </span>
+                    </div>
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      className="h-7 text-xs border-amber-500/40 hover:bg-amber-500/20"
+                      onClick={() => {
+                        setIsRemedialFilterActive(false);
+                        setActivePuzzleIndex(0);
+                      }}
+                    >
+                      Exit Drill
+                    </Button>
+                  </div>
+                )}
 
                 {/* Active Motif & Remedial HUD Banner */}
                 <div className="rounded-xl border border-border bg-card p-3 shadow-sm flex flex-wrap items-center justify-between gap-2">
@@ -821,7 +978,7 @@ function Tactics() {
                 </div>
 
                 {/* Remedial Queue Alert Banner */}
-                {isInRemedialQueue && (
+                {isInRemedialQueue && !isRemedialFilterActive && (
                   <div className="rounded-xl border border-amber-500/40 bg-amber-500/10 p-3 text-xs text-amber-600 dark:text-amber-400 flex items-center gap-2 animate-in fade-in">
                     <AlertTriangle className="h-4 w-4 shrink-0" />
                     <span>
@@ -1065,6 +1222,14 @@ function Tactics() {
                       </span>
                       <span>·</span>
                       <span className="font-mono">{summary?.statusLabel}</span>
+                      {(mData?.remedialQueue?.length || 0) > 0 && (
+                        <>
+                          <span>·</span>
+                          <span className="text-[10px] font-bold text-amber-600 dark:text-amber-400 bg-amber-500/15 px-1.5 py-0.5 rounded-md">
+                            {mData.remedialQueue.length} missed
+                          </span>
+                        </>
+                      )}
                     </div>
                   </div>
 
