@@ -6,8 +6,10 @@ import {
   Award,
   BookOpen,
   CheckCircle2,
+  ChevronLeft,
   ChevronRight,
   Dna,
+  Eye,
   Flame,
   Gauge,
   HelpCircle,
@@ -52,7 +54,11 @@ import {
   type GlobalTierProgressSummary,
 } from "@/utils/tacticsProgression";
 import { classifyTacticalTier, getMotifDisplayBadge } from "@/utils/tacticsTierMatrix";
-import { extractTacticsFromGame, SEED_TACTICS_PUZZLES } from "@/utils/tacticsScraper";
+import {
+  extractTacticsFromGame,
+  fetchLichessThematicPuzzles,
+  SEED_TACTICS_PUZZLES,
+} from "@/utils/tacticsScraper";
 
 export const Route = createFileRoute("/middlegame/tactics")({
   head: () => ({
@@ -86,6 +92,11 @@ function Tactics() {
   const [allPuzzles, setAllPuzzles] = useState<TacticsPuzzleItem[]>(SEED_TACTICS_PUZZLES);
   const [activePuzzleIndex, setActivePuzzleIndex] = useState(0);
 
+  // Auto-advance & solution playback state
+  const [autoAdvance, setAutoAdvance] = useState(true);
+  const [isPlayingSolution, setIsPlayingSolution] = useState(false);
+  const autoAdvanceTimerRef = useRef<NodeJS.Timeout | null>(null);
+
   // Hydrate progress and seed puzzles on mount
   useEffect(() => {
     getTacticsProgress().then((p) => setProgress(p));
@@ -93,7 +104,6 @@ function Tactics() {
       if (saved && saved.length > 0) {
         setAllPuzzles(saved);
       } else {
-        // Save initial seeds to IndexedDB
         saveTacticsPuzzles(SEED_TACTICS_PUZZLES);
         setAllPuzzles(SEED_TACTICS_PUZZLES);
       }
@@ -135,6 +145,12 @@ function Tactics() {
 
   // Sync board when active puzzle changes
   useEffect(() => {
+    if (autoAdvanceTimerRef.current) {
+      clearTimeout(autoAdvanceTimerRef.current);
+      autoAdvanceTimerRef.current = null;
+    }
+    setIsPlayingSolution(false);
+
     try {
       chessRef.current = new Chess(currentPuzzle.fen);
     } catch {
@@ -149,6 +165,12 @@ function Tactics() {
   }, [currentPuzzle]);
 
   const handleResetPuzzle = useCallback(() => {
+    if (autoAdvanceTimerRef.current) {
+      clearTimeout(autoAdvanceTimerRef.current);
+      autoAdvanceTimerRef.current = null;
+    }
+    setIsPlayingSolution(false);
+
     try {
       chessRef.current = new Chess(currentPuzzle.fen);
     } catch {
@@ -163,18 +185,94 @@ function Tactics() {
   }, [currentPuzzle]);
 
   const handleNextPuzzle = useCallback(() => {
+    if (autoAdvanceTimerRef.current) {
+      clearTimeout(autoAdvanceTimerRef.current);
+      autoAdvanceTimerRef.current = null;
+    }
+    setIsPlayingSolution(false);
     setActivePuzzleIndex((prev) => prev + 1);
   }, []);
 
-  // Periodic Incremental Sync: scans all saved variation games for tactics
+  const handlePrevPuzzle = useCallback(() => {
+    if (autoAdvanceTimerRef.current) {
+      clearTimeout(autoAdvanceTimerRef.current);
+      autoAdvanceTimerRef.current = null;
+    }
+    setIsPlayingSolution(false);
+    setActivePuzzleIndex((prev) => Math.max(0, prev - 1));
+  }, []);
+
+  // Show Solution: step-by-step playback on board
+  const handleShowSolution = useCallback(() => {
+    if (isPlayingSolution) return;
+    setIsPlayingSolution(true);
+
+    const playChess = new Chess(currentPuzzle.fen);
+    setCurrentFen(playChess.fen());
+
+    let i = 0;
+    const interval = setInterval(() => {
+      if (i >= currentPuzzle.solutionPv.length) {
+        clearInterval(interval);
+        setIsPlayingSolution(false);
+        return;
+      }
+      const moveSan = currentPuzzle.solutionPv[i];
+      try {
+        const res = playChess.move(moveSan);
+        if (res) {
+          setCurrentFen(playChess.fen());
+          setLastMoveHighlight({ from: res.from, to: res.to });
+        }
+      } catch {
+        // ignore
+      }
+      i++;
+    }, 700);
+  }, [currentPuzzle, isPlayingSolution]);
+
+  // Keyboard navigation support: Space or Enter advances to next, R retries, H hints
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement) return;
+
+      if (e.key === " " || e.key === "Enter") {
+        if (status === "completed" || status === "wrong") {
+          e.preventDefault();
+          handleNextPuzzle();
+        }
+      } else if (e.key === "r" || e.key === "R") {
+        handleResetPuzzle();
+      } else if (e.key === "h" || e.key === "H") {
+        setShowHint((prev) => !prev);
+      }
+    };
+
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, [status, handleNextPuzzle, handleResetPuzzle]);
+
+  // Periodic Incremental Sync: scans Lichess API & opening games
   const handleSyncNewTactics = async () => {
     setIsSyncing(true);
-    toast.info("Scanning Games & Opening Database", {
-      description: "Extracting tactics with depth 25 Stockfish analysis...",
+    toast.info("Syncing Tactics Library", {
+      description: `Fetching verified Lichess ${selectedMotif} puzzles and indexing games...`,
     });
 
     try {
       const extracted: TacticsPuzzleItem[] = [];
+
+      // 1. Fetch fresh verified puzzles from Lichess API using user's token
+      try {
+        const lichessPuzzles = await fetchLichessThematicPuzzles(selectedMotif, 3);
+        if (lichessPuzzles.length > 0) {
+          extracted.push(...lichessPuzzles);
+        }
+      } catch {
+        // continue
+      }
+
+      // 2. Scan saved variation games
       for (const v of savedVariations) {
         if (v.games && v.games.length > 0) {
           for (const g of v.games) {
@@ -195,7 +293,7 @@ function Tactics() {
         const updatedAll = await getTacticsPuzzles();
         setAllPuzzles(updatedAll);
         toast.success(`Tactics Database Updated!`, {
-          description: `Discovered and cataloged ${extracted.length} new tactical combinations.`,
+          description: `Added ${extracted.length} verified tactical combinations to your database.`,
         });
       } else {
         toast.success("Database Up to Date", {
@@ -207,7 +305,7 @@ function Tactics() {
       const updatedProg = { ...progress, lastSyncTimestamp: new Date().toISOString() };
       await saveTacticsProgress(updatedProg);
       setProgress(updatedProg);
-    } catch (err) {
+    } catch {
       toast.error("Sync Encountered an Issue", {
         description: "Cached positions preserved cleanly.",
       });
@@ -229,7 +327,7 @@ function Tactics() {
 
   // Move handling with solution verification
   const onMove = (from: string, to: string) => {
-    if (status === "completed") return false;
+    if (status === "completed" || isPlayingSolution) return false;
 
     const chess = chessRef.current;
     const expectedMoveSan = currentPuzzle.solutionPv[stepIndex];
@@ -239,11 +337,10 @@ function Tactics() {
       const moveCandidate = legalMoves.find((m) => m.from === from && m.to === to);
       if (!moveCandidate) return false;
 
-      // Check if move matches solution SAN
+      // Check if move matches solution SAN or LAN
       const isMatch =
         moveCandidate.san === expectedMoveSan ||
         moveCandidate.lan === currentPuzzle.solutionLanPv[stepIndex] ||
-        // Check partial promotion match
         moveCandidate.san.replace("+", "").replace("#", "") ===
           expectedMoveSan?.replace("+", "").replace("#", "");
 
@@ -326,6 +423,14 @@ function Tactics() {
         }
       });
     }
+
+    // Auto-advance if enabled
+    if (autoAdvance) {
+      if (autoAdvanceTimerRef.current) clearTimeout(autoAdvanceTimerRef.current);
+      autoAdvanceTimerRef.current = setTimeout(() => {
+        handleNextPuzzle();
+      }, 1500);
+    }
   };
 
   return (
@@ -343,7 +448,7 @@ function Tactics() {
             className="shadow-sm"
           >
             <RefreshCw className={cn("h-4 w-4 mr-1.5", isSyncing && "animate-spin")} />
-            {isSyncing ? "Scanning Games..." : "Sync New Games & Puzzles"}
+            {isSyncing ? "Syncing Tactics..." : "Sync New Games & Puzzles"}
           </Button>
         }
       />
@@ -368,17 +473,22 @@ function Tactics() {
 
           <div className="flex items-center gap-4">
             <div className="rounded-xl border border-border bg-secondary/40 px-4 py-2 text-center">
-              <span className="text-[11px] text-muted-foreground block font-medium">
-                Overall Tactics Rating
+              <span className="text-[10px] font-mono uppercase text-muted-foreground block">
+                Overall Rating
               </span>
-              <span className="font-display text-xl font-bold text-primary">
-                {tierSummary.overallRatingDisplay}
+              <span className="font-mono text-xl font-bold text-foreground">
+                {progress.isCalibrated ? progress.overallRating : "Calibrating..."}
               </span>
             </div>
 
             {tierSummary.canUnlockNextTier && (
-              <Button onClick={handleUnlockNextTier} className="shadow-lg bg-emerald-600 hover:bg-emerald-700">
-                Unlock Level {tierSummary.activeTier + 1} <ChevronRight className="h-4 w-4 ml-1" />
+              <Button
+                variant="default"
+                size="sm"
+                onClick={handleUnlockNextTier}
+                className="bg-emerald-600 hover:bg-emerald-700 shadow-md font-semibold text-white animate-pulse"
+              >
+                Unlock Level {progress.activeGlobalTier + 1}
               </Button>
             )}
           </div>
@@ -390,6 +500,52 @@ function Tactics() {
       <TrainingLayout
         board={
           <div className="space-y-3">
+            {/* Carousel & Auto-Advance Control Bar */}
+            <div className="flex items-center justify-between gap-2 px-1 text-xs">
+              <div className="flex items-center gap-1.5">
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={handlePrevPuzzle}
+                  disabled={activePuzzleIndex === 0}
+                  className="h-7 px-2 text-xs"
+                  title="Previous tactic"
+                >
+                  <ChevronLeft className="h-3.5 w-3.5 mr-0.5" /> Prev
+                </Button>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={handleNextPuzzle}
+                  className="h-7 px-2 text-xs"
+                  title="Next tactic"
+                >
+                  Next <ChevronRight className="h-3.5 w-3.5 ml-0.5" />
+                </Button>
+                <span className="font-mono text-muted-foreground ml-1">
+                  Puzzle {motifPuzzles.length > 0 ? (activePuzzleIndex % motifPuzzles.length) + 1 : 1} of{" "}
+                  {motifPuzzles.length || 1}
+                </span>
+              </div>
+
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={() => setAutoAdvance((v) => !v)}
+                  className={cn(
+                    "rounded-md border px-2 py-1 text-[11px] font-mono transition-colors flex items-center gap-1 cursor-pointer",
+                    autoAdvance
+                      ? "border-emerald-500/40 bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 font-semibold"
+                      : "border-border text-muted-foreground hover:bg-muted/30",
+                  )}
+                  title="Toggle auto-advance to next puzzle on solve"
+                >
+                  <span>Auto-Advance</span>
+                  <span className="font-bold">{autoAdvance ? "ON" : "OFF"}</span>
+                </button>
+              </div>
+            </div>
+
             {/* Active Motif & Remedial HUD Banner */}
             <div className="rounded-xl border border-border bg-card p-3 shadow-sm flex flex-wrap items-center justify-between gap-2">
               <div className="flex items-center gap-2">
@@ -397,9 +553,13 @@ function Tactics() {
                   {selectedMotif}
                 </span>
 
+                <span className="text-xs text-muted-foreground font-mono">
+                  Level {currentPuzzle.tierLevel} · {currentPuzzle.tierName}
+                </span>
+
                 {currentPuzzle.secondaryMotifs.length > 0 && (
                   <span className="hidden sm:inline text-xs text-muted-foreground font-mono">
-                    Compounded with {currentPuzzle.secondaryMotifs.join(", ")}
+                    · Secondary: {currentPuzzle.secondaryMotifs.join(", ")}
                   </span>
                 )}
               </div>
@@ -418,8 +578,8 @@ function Tactics() {
               <div className="rounded-xl border border-amber-500/40 bg-amber-500/10 p-3 text-xs text-amber-600 dark:text-amber-400 flex items-center gap-2 animate-in fade-in">
                 <AlertTriangle className="h-4 w-4 shrink-0" />
                 <span>
-                  <strong>Remedial Clearance Phase:</strong> You missed this puzzle previously.
-                  Solve it now to clear your remedial queue and resume normal streak progression!
+                  <strong>Remedial Clearance Phase:</strong> You missed this puzzle previously. Solve
+                  it now to clear your remedial queue and resume normal streak progression!
                 </span>
               </div>
             )}
@@ -441,18 +601,26 @@ function Tactics() {
                   variant="outline"
                   size="sm"
                   onClick={() => setShowHint((h) => !h)}
-                  title="Show strategic hint"
+                  title="Show tactical hint"
                 >
                   <Lightbulb className="h-3.5 w-3.5 mr-1" /> {showHint ? "Hide Hint" : "Hint"}
+                </Button>
+                <Button
+                  variant="default"
+                  size="sm"
+                  onClick={handleNextPuzzle}
+                  title="Skip to next tactic"
+                >
+                  Next <ChevronRight className="h-3.5 w-3.5 ml-1" />
                 </Button>
               </div>
             </div>
 
-            {/* Feedback & Strategic Explanation */}
+            {/* Feedback & Comprehensive Action Controls */}
             {status !== "idle" && (
               <div
                 className={cn(
-                  "rounded-xl border p-4 animate-in fade-in",
+                  "rounded-xl border p-4 animate-in fade-in space-y-3",
                   status === "completed" || status === "correct"
                     ? "border-emerald-500/40 bg-emerald-500/10 text-emerald-600 dark:text-emerald-400"
                     : "border-destructive/40 bg-destructive/10 text-destructive",
@@ -473,14 +641,73 @@ function Tactics() {
                     )}
                   </div>
                 </div>
+
+                {/* Action Buttons for both Completed and Wrong States */}
+                <div className="flex flex-wrap items-center justify-between gap-2 pt-2 border-t border-current/15">
+                  {status === "completed" ? (
+                    <div className="flex items-center justify-between w-full">
+                      <Button
+                        variant="default"
+                        size="sm"
+                        onClick={handleNextPuzzle}
+                        className="shadow font-semibold bg-emerald-600 hover:bg-emerald-700 text-white"
+                      >
+                        Next Tactic <ChevronRight className="h-4 w-4 ml-1.5" />
+                      </Button>
+                      {autoAdvance && (
+                        <span className="text-[11px] text-muted-foreground animate-pulse font-mono">
+                          Advancing in 1.5s... (Space to skip)
+                        </span>
+                      )}
+                    </div>
+                  ) : (
+                    <div className="flex flex-wrap items-center gap-2 w-full">
+                      <Button
+                        variant="secondary"
+                        size="sm"
+                        onClick={handleResetPuzzle}
+                        className="text-xs"
+                      >
+                        <RotateCcw className="h-3.5 w-3.5 mr-1" /> Retry Tactic
+                      </Button>
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={handleShowSolution}
+                        disabled={isPlayingSolution}
+                        className="text-xs"
+                      >
+                        <Eye className="h-3.5 w-3.5 mr-1" />
+                        {isPlayingSolution ? "Playing..." : "Show Solution"}
+                      </Button>
+                      <Button
+                        variant="default"
+                        size="sm"
+                        onClick={handleNextPuzzle}
+                        className="text-xs ml-auto"
+                      >
+                        Next Tactic <ChevronRight className="h-3.5 w-3.5 ml-1" />
+                      </Button>
+                    </div>
+                  )}
+                </div>
               </div>
             )}
 
+            {/* Smart 2-Stage Hint */}
             {showHint && (
-              <div className="rounded-xl border border-primary/30 bg-primary/5 p-3 text-xs leading-relaxed text-muted-foreground animate-in fade-in">
-                <span className="font-bold text-foreground block mb-0.5">Tactical Guide:</span>
-                Focus on the {selectedMotif.toLowerCase()} mechanism on move 1 to force a material
-                win.
+              <div className="rounded-xl border border-primary/30 bg-primary/5 p-3.5 text-xs leading-relaxed text-muted-foreground animate-in fade-in space-y-1.5">
+                <div className="flex items-center gap-1.5 font-bold text-foreground">
+                  <Lightbulb className="h-3.5 w-3.5 text-amber-500" /> Tactical Coach Hint:
+                </div>
+                <p>
+                  Focus on the <strong>{selectedMotif.toLowerCase()}</strong> mechanism. Look for a
+                  vulnerable, undefended, or overloaded enemy target.
+                </p>
+                <p className="font-mono text-[11px] text-primary">
+                  Clue: Move starts with a <strong>{currentPuzzle.initialTurn}</strong> piece from{" "}
+                  <strong>{currentPuzzle.solutionPv[0]?.slice(0, 2) || "starting square"}</strong>.
+                </p>
               </div>
             )}
           </div>
@@ -510,7 +737,7 @@ function Tactics() {
                     setActivePuzzleIndex(0);
                   }}
                   className={cn(
-                    "w-full flex items-center justify-between rounded-xl p-3 text-left transition-all border",
+                    "w-full flex items-center justify-between rounded-xl p-3 text-left transition-all border cursor-pointer",
                     isSelected
                       ? "border-primary bg-primary/10 shadow-sm"
                       : "border-border hover:bg-muted/30",
@@ -549,3 +776,4 @@ function Tactics() {
     </div>
   );
 }
+export default Tactics;

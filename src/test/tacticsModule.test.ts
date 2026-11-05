@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { Chess } from "chess.js";
 import {
   TACTICAL_MOTIFS,
   TACTICAL_TIERS,
@@ -18,7 +19,10 @@ import {
   evaluateGlobalTierProgress,
   unlockNextGlobalTier,
 } from "../utils/tacticsProgression";
-import { SEED_TACTICS_PUZZLES } from "../utils/tacticsScraper";
+import {
+  SEED_TACTICS_PUZZLES,
+  MOTIF_TO_LICHESS_THEME,
+} from "../utils/tacticsScraper";
 
 describe("Component #1: 16-Tactical-Motif Dictionary & Primary/Secondary Engine", () => {
   it("contains exactly the 16 enforced canonical motifs", () => {
@@ -245,5 +249,44 @@ describe("Component #1: Strict Streak Reset (to 0) & Remedial Queue Mechanics", 
     const updated = await clearRemedialItem("Fork / Double Attack", "puzzle-101");
     expect(updated.motifProgress["Fork / Double Attack"].remedialQueue).not.toContain("puzzle-101");
     expect(updated.motifProgress["Fork / Double Attack"].remedialQueue).toContain("puzzle-102");
+  });
+});
+
+describe("Component #1: Soundness, Completeness, and Lichess Thematic Mapping", () => {
+  it("verifies 100% of seed puzzles have legal moves and zero forced checkmates", () => {
+    expect(SEED_TACTICS_PUZZLES.length).toBeGreaterThanOrEqual(16);
+
+    for (const p of SEED_TACTICS_PUZZLES) {
+      const chess = new Chess(p.fen);
+      expect(chess.fen()).toBeDefined();
+
+      for (const m of p.solutionPv) {
+        const moveRes = chess.move(m);
+        expect(moveRes, `Illegal move ${m} in puzzle ${p.id} (${p.primaryMotif})`).not.toBeNull();
+      }
+
+      expect(chess.isCheckmate(), `Puzzle ${p.id} must not be checkmate`).toBe(false);
+      expect(p.isCheckmate).toBe(false);
+    }
+  });
+
+  it("ensures Level 1 puzzles are strictly Novice Observer with 1-2 moves", () => {
+    const level1 = SEED_TACTICS_PUZZLES.filter((p) => p.tierLevel === 1);
+    expect(level1.length).toBeGreaterThanOrEqual(5);
+
+    for (const p of level1) {
+      expect(p.tierName).toBe("Novice Observer");
+      expect(p.rating).toBeLessThan(1200);
+      expect(p.moveLength).toBeLessThanOrEqual(2);
+    }
+  });
+
+  it("maps all 16 canonical motifs to Lichess theme keys", () => {
+    for (const motif of TACTICAL_MOTIFS) {
+      const themeKey = MOTIF_TO_LICHESS_THEME[motif];
+      expect(themeKey).toBeDefined();
+      expect(typeof themeKey).toBe("string");
+      expect(themeKey.length).toBeGreaterThan(0);
+    }
   });
 });
