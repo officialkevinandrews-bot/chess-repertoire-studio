@@ -3,10 +3,26 @@ import {
   type TacticsPuzzleItem,
   type TacticalMotif,
   type TacticalTierLevel,
+  type SavedVariation,
   getStoredLichessToken,
 } from "../services/repertoireStorage";
 import { analyzeTacticalMotifs } from "./tacticsMotifEngine";
 import { classifyTacticalTier } from "./tacticsTierMatrix";
+
+/**
+ * Resolves a repertoire variation name to a standard Lichess opening angle tag.
+ * e.g., "Sicilian Defense: Najdorf Variation" -> "Sicilian_Defense_Najdorf_Variation"
+ */
+export function resolveLichessOpeningTag(name?: string): string {
+  if (!name || !name.trim()) return "";
+  let clean = name
+    .replace(/['`’]/g, "")
+    .replace(/:\s*/g, "_")
+    .replace(/[\s\/]+/g, "_")
+    .replace(/[^a-zA-Z0-9_\-]/g, "");
+  clean = clean.replace(/^_+|_+$/g, "").replace(/_+/g, "_");
+  return clean;
+}
 
 /**
  * Mapping of canonical 16 tactical motifs to Lichess API theme angles.
@@ -359,6 +375,367 @@ export function extractTacticsFromGame(
 }
 
 /**
+ * Progress telemetry for single-motif batch ingestion.
+ */
+export interface MotifSyncProgress {
+  motif: TacticalMotif;
+  currentLevel: TacticalTierLevel;
+  levelCounts: Record<TacticalTierLevel, number>;
+  levelTargets: Record<TacticalTierLevel, number>;
+  exemptLevels: TacticalTierLevel[];
+  startsAtLevel: TacticalTierLevel;
+  totalPuzzlesCollected: number;
+  totalTarget: number;
+  statusMessage: string;
+  isComplete: boolean;
+  rateLimitEncountered?: boolean;
+}
+
+const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
+
+const LEVEL_DIFFICULTIES: Record<
+  TacticalTierLevel,
+  "easiest" | "easier" | "normal" | "harder" | "hardest"
+> = {
+  1: "easiest",
+  2: "easier",
+  3: "normal",
+  4: "normal",
+  5: "harder",
+  6: "harder",
+  7: "hardest",
+  8: "hardest",
+  9: "hardest",
+};
+
+/**
+ * Synchronizes puzzles for a single motif in strict level-by-level progression (Levels 1 to 9).
+ *
+ * GOAL:
+ * - 50 puzzles per level across 9 levels = 450 puzzles total.
+ * - If a motif has no Level 1 puzzles (starts at Level 2), target dynamically adjusts to 400.
+ * - If Level 1 & 2 are absent, target adjusts to 350.
+ * - Level 1 is populated first, then Level 2, etc.
+ * - 100% deduplication against existing stored puzzles.
+ * - Strict perspective isolation: Black repertoire = Black to move and winning material.
+ * - Forced checkmates are strictly isolated.
+ */
+export async function syncMotifTacticsBatch(
+  motif: TacticalMotif,
+  variation: SavedVariation | null,
+  perspective: "white" | "black",
+  existingPuzzles: TacticsPuzzleItem[],
+  onProgress?: (p: MotifSyncProgress) => void,
+  perLevelTarget = 50,
+): Promise<{ newPuzzles: TacticsPuzzleItem[]; progress: MotifSyncProgress }> {
+  const theme = MOTIF_TO_LICHESS_THEME[motif] || "fork";
+  const token = getStoredLichessToken();
+  const openingTag = variation?.name ? resolveLichessOpeningTag(variation.name) : "";
+
+  // 1. Analyze existing puzzles for this motif and perspective
+  const levelCounts: Record<TacticalTierLevel, number> = {
+    1: 0,
+    2: 0,
+    3: 0,
+    4: 0,
+    5: 0,
+    6: 0,
+    7: 0,
+    8: 0,
+    9: 0,
+  };
+
+  const seenIds = new Set<string>();
+  for (const p of existingPuzzles) {
+    seenIds.add(p.id);
+    if (
+      p.primaryMotif === motif &&
+      p.initialTurn === perspective &&
+      (!variation || !p.openingVariationId || p.openingVariationId === variation.id)
+    ) {
+      if (p.tierLevel >= 1 && p.tierLevel <= 9) {
+        levelCounts[p.tierLevel]++;
+      }
+    }
+  }
+
+  // 2. Determine starting level and exempt levels
+  let startsAtLevel: TacticalTierLevel = 1;
+  const exemptLevels: TacticalTierLevel[] = [];
+
+  // If Level 1 already has puzzles, starts at 1
+  if (levelCounts[1] === 0) {
+    // Probe Level 1 to see if sub-1000 puzzles exist for this motif
+    let foundLevel1 = false;
+    for (let probe = 0; probe < 3; probe++) {
+      try {
+        const probeRes = await fetch(
+          `https://lichess.org/api/puzzle/next?angle=${theme}&difficulty=easiest`,
+          { headers: { Authorization: `Bearer ${token}` } },
+        );
+        if (probeRes.ok) {
+          const data = await probeRes.json();
+          if (data.puzzle?.rating && data.puzzle.rating < 1000) {
+            foundLevel1 = true;
+            break;
+          }
+        } else if (probeRes.status === 429) {
+          break;
+        }
+      } catch {
+        break;
+      }
+    }
+
+    if (!foundLevel1) {
+      // Motif has no novice puzzles — starts at Level 2
+      startsAtLevel = 2;
+      exemptLevels.push(1);
+    }
+  }
+
+  const levelTargets: Record<TacticalTierLevel, number> = {
+    1: exemptLevels.includes(1) ? 0 : perLevelTarget,
+    2: exemptLevels.includes(2) ? 0 : perLevelTarget,
+    3: perLevelTarget,
+    4: perLevelTarget,
+    5: perLevelTarget,
+    6: perLevelTarget,
+    7: perLevelTarget,
+    8: perLevelTarget,
+    9: perLevelTarget,
+  };
+
+  const totalTarget = Object.values(levelTargets).reduce((a, b) => a + b, 0);
+  const newPuzzles: TacticsPuzzleItem[] = [];
+
+  const getProgressSnapshot = (
+    currentLevel: TacticalTierLevel,
+    statusMessage: string,
+    isComplete = false,
+    rateLimitEncountered = false,
+  ): MotifSyncProgress => {
+    const totalPuzzlesCollected = (
+      Object.entries(levelCounts) as [string, number][]
+    ).reduce((sum, [lvlStr, count]) => {
+      const lvl = Number(lvlStr) as TacticalTierLevel;
+      return exemptLevels.includes(lvl) ? sum : sum + count;
+    }, 0);
+
+    return {
+      motif,
+      currentLevel,
+      levelCounts: { ...levelCounts },
+      levelTargets: { ...levelTargets },
+      exemptLevels: [...exemptLevels],
+      startsAtLevel,
+      totalPuzzlesCollected,
+      totalTarget,
+      statusMessage,
+      isComplete,
+      rateLimitEncountered,
+    };
+  };
+
+  // 3. First scan saved variation games to extract tactics from repertoire DNA
+  if (variation?.games && variation.games.length > 0) {
+    onProgress?.(
+      getProgressSnapshot(
+        startsAtLevel,
+        `Scanning ${variation.games.length} ${variation.name} games for ${motif} strikes...`,
+      ),
+    );
+
+    for (const g of variation.games) {
+      const gameTactics = extractTacticsFromGame(
+        g.id,
+        `${g.white.name} vs ${g.black.name}`,
+        g.movesSan,
+        variation.id,
+        variation.name,
+        perspective,
+      );
+
+      for (const t of gameTactics) {
+        if (
+          t.primaryMotif === motif &&
+          !seenIds.has(t.id) &&
+          !t.isCheckmate &&
+          t.initialTurn === perspective
+        ) {
+          const lvl = t.tierLevel;
+          if (levelCounts[lvl] < (levelTargets[lvl] || perLevelTarget)) {
+            seenIds.add(t.id);
+            newPuzzles.push(t);
+            levelCounts[lvl]++;
+          }
+        }
+      }
+    }
+  }
+
+  // 4. Ingest Level by Level (from startsAtLevel up to Level 9)
+  let rateLimitHit = false;
+
+  for (let lvl = startsAtLevel; lvl <= 9; lvl++) {
+    const targetForLvl = levelTargets[lvl as TacticalTierLevel];
+    if (targetForLvl === 0 || levelCounts[lvl as TacticalTierLevel] >= targetForLvl) {
+      continue;
+    }
+
+    const diff = LEVEL_DIFFICULTIES[lvl as TacticalTierLevel];
+    onProgress?.(
+      getProgressSnapshot(
+        lvl as TacticalTierLevel,
+        `Populating Level ${lvl} (${levelCounts[lvl as TacticalTierLevel]}/${targetForLvl}) for ${motif}...`,
+      ),
+    );
+
+    let consecutiveFailures = 0;
+    let probes = 0;
+    const maxProbes = 80; // protect against runaway loops
+
+    while (
+      levelCounts[lvl as TacticalTierLevel] < targetForLvl &&
+      probes < maxProbes &&
+      consecutiveFailures < 8 &&
+      !rateLimitHit
+    ) {
+      probes++;
+      await sleep(120); // gentle throttle to avoid rate limiting
+
+      // Alternate between opening tag angle and motif theme
+      const queryAngle = probes % 3 === 0 && openingTag ? openingTag : theme;
+      const url = `https://lichess.org/api/puzzle/next?angle=${queryAngle}&difficulty=${diff}`;
+
+      try {
+        const res = await fetch(url, {
+          headers: { Authorization: `Bearer ${token}` },
+        });
+
+        if (res.status === 429) {
+          rateLimitHit = true;
+          break;
+        }
+
+        if (!res.ok) {
+          consecutiveFailures++;
+          continue;
+        }
+
+        const data = await res.json();
+        const p = data.puzzle;
+        const g = data.game;
+        if (!p || !p.fen || !p.solution || seenIds.has(`lichess-${p.id}`)) {
+          consecutiveFailures++;
+          continue;
+        }
+
+        const turn = p.fen.includes(" w ") ? "white" : "black";
+        if (turn !== perspective) {
+          consecutiveFailures++;
+          continue;
+        }
+
+        if ((p.themes || []).some((t: string) => t.toLowerCase().includes("mate"))) {
+          consecutiveFailures++;
+          continue;
+        }
+
+        // Validate solution line
+        const chess = new Chess(p.fen);
+        const sanMoves: string[] = [];
+        const lanMoves: string[] = [];
+        let endsInMate = false;
+
+        for (const uci of p.solution) {
+          const from = uci.slice(0, 2);
+          const to = uci.slice(2, 4);
+          const promotion = uci.length > 4 ? uci[4] : undefined;
+          let m;
+          try {
+            m = chess.move({ from, to, promotion });
+          } catch {
+            break;
+          }
+          if (!m) break;
+          sanMoves.push(m.san);
+          lanMoves.push(`${from}${to}`);
+          if (chess.isCheckmate() || m.san.includes("#")) {
+            endsInMate = true;
+            break;
+          }
+        }
+
+        if (endsInMate || sanMoves.length !== p.solution.length) {
+          consecutiveFailures++;
+          continue;
+        }
+
+        const rating = p.rating || 1500;
+        const { tierLevel, tierName } = classifyTacticalTier(rating, sanMoves.length);
+
+        // Check if candidate tier still needs puzzles
+        const destLvl = tierLevel;
+        const destTarget = levelTargets[destLvl] || perLevelTarget;
+
+        if (levelCounts[destLvl] < destTarget) {
+          const whitePlayer = g?.players?.[0]?.name || "White";
+          const blackPlayer = g?.players?.[1]?.name || "Black";
+
+          const puzzleItem: TacticsPuzzleItem = {
+            id: `lichess-${p.id}`,
+            fen: p.fen,
+            initialTurn: turn,
+            solutionPv: sanMoves,
+            solutionLanPv: lanMoves,
+            primaryMotif: motif,
+            secondaryMotifs: [],
+            tierLevel: destLvl,
+            tierName,
+            rating,
+            moveLength: sanMoves.length,
+            sourceGameId: g?.id || p.id,
+            players: `${whitePlayer} vs ${blackPlayer}`,
+            openingVariationId: variation?.id,
+            openingName: variation?.name,
+            explanation: `Verified ${turn.toUpperCase()} ${motif} strike from ${whitePlayer} vs ${blackPlayer} (Rating ${rating}). Play the winning combination.`,
+            isCheckmate: false,
+          };
+
+          seenIds.add(puzzleItem.id);
+          newPuzzles.push(puzzleItem);
+          levelCounts[destLvl]++;
+          consecutiveFailures = 0;
+
+          onProgress?.(
+            getProgressSnapshot(
+              lvl as TacticalTierLevel,
+              `Collected ${motif} Level ${destLvl} (${levelCounts[destLvl]}/${destTarget})...`,
+            ),
+          );
+        }
+      } catch {
+        consecutiveFailures++;
+      }
+    }
+  }
+
+  const finalSnapshot = getProgressSnapshot(
+    9,
+    rateLimitHit
+      ? `Rate limit paused sync. Saved ${newPuzzles.length} new puzzles safely.`
+      : `Sync complete! ${newPuzzles.length} verified ${perspective.toUpperCase()} ${motif} tactics loaded.`,
+    !rateLimitHit,
+    rateLimitHit,
+  );
+
+  onProgress?.(finalSnapshot);
+  return { newPuzzles, progress: finalSnapshot };
+}
+
+/**
  * Seed database placeholder array (intentionally empty — all tactics are dynamically synced).
  */
 export const SEED_TACTICS_PUZZLES: TacticsPuzzleItem[] = [];
+

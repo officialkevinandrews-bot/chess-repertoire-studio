@@ -22,6 +22,7 @@ import {
   Sword,
   Target,
   Trophy,
+  X,
   XCircle,
   Zap,
 } from "lucide-react";
@@ -56,6 +57,8 @@ import { classifyTacticalTier, getMotifDisplayBadge } from "@/utils/tacticsTierM
 import {
   extractTacticsFromGame,
   fetchLichessThematicPuzzles,
+  syncMotifTacticsBatch,
+  type MotifSyncProgress,
 } from "@/utils/tacticsScraper";
 
 export const Route = createFileRoute("/middlegame/tactics")({
@@ -103,6 +106,8 @@ function Tactics() {
   // Selected Motif state (default: Fork / Double Attack)
   const [selectedMotif, setSelectedMotif] = useState<TacticalMotif>("Fork / Double Attack");
   const [isSyncing, setIsSyncing] = useState(false);
+  const [isSyncModalOpen, setIsSyncModalOpen] = useState(false);
+  const [syncProgress, setSyncProgress] = useState<MotifSyncProgress | null>(null);
 
   // Global Progress & Puzzles state (clean initial state — NO placeholder seed tactics!)
   const [progress, setProgress] = useState<TacticsGlobalProgress>(getDefaultTacticsProgress());
@@ -174,9 +179,23 @@ function Tactics() {
     }));
   }, [puzzleCountsByMotif]);
 
-  // Filter puzzles matching the active selected motif
+  // Finds next motif that has not yet reached full 450 target
+  const nextIncompleteMotif = useMemo(() => {
+    const currentIndex = TACTICAL_MOTIFS.indexOf(selectedMotif);
+    for (let i = 1; i <= TACTICAL_MOTIFS.length; i++) {
+      const nextIdx = (currentIndex + i) % TACTICAL_MOTIFS.length;
+      const m = TACTICAL_MOTIFS[nextIdx];
+      const count = puzzleCountsByMotif[m] || 0;
+      if (count < 450) return m;
+    }
+    return null;
+  }, [selectedMotif, puzzleCountsByMotif]);
+
+  // Filter puzzles matching active selected motif, ordered strictly by Tier Level ascending (L1 -> L9)
   const motifPuzzles = useMemo(() => {
-    return perspectivePuzzles.filter((p) => p.primaryMotif === selectedMotif);
+    return perspectivePuzzles
+      .filter((p) => p.primaryMotif === selectedMotif)
+      .sort((a, b) => a.tierLevel - b.tierLevel || a.rating - b.rating);
   }, [perspectivePuzzles, selectedMotif]);
 
   // Current active puzzle (null if unsynced or 0 puzzles for this motif)
@@ -323,115 +342,38 @@ function Tactics() {
     return () => window.removeEventListener("keydown", handleKeyDown);
   }, [status, handleNextPuzzle, handleResetPuzzle]);
 
-  // Periodic Incremental Sync: scans Lichess API & opening games strictly for the target perspective
-  const handleSyncNewTactics = async () => {
+  // Motif-by-Motif Ingestion Pipeline: up to 450 puzzles per motif (50 per level, L1 to L9)
+  const handleSyncSingleMotif = async (targetMotif: TacticalMotif = selectedMotif) => {
     setIsSyncing(true);
-    toast.info("Syncing Tactics Library", {
-      description: `Fetching verified ${perspective.toUpperCase()} tactics for ${selectedVariation?.name || "repertoire"}...`,
-    });
+    setIsSyncModalOpen(true);
+    setSelectedMotif(targetMotif);
 
     try {
-      const extracted: TacticsPuzzleItem[] = [];
+      const { newPuzzles, progress: finalProgress } = await syncMotifTacticsBatch(
+        targetMotif,
+        selectedVariation,
+        perspective,
+        allPuzzles,
+        (prog) => setSyncProgress({ ...prog }),
+        50,
+      );
 
-      // 1. Fetch fresh verified puzzles from Lichess API for the active perspective & selected motif
-      try {
-        const lichessPuzzles = await fetchLichessThematicPuzzles(
-          selectedMotif,
-          5,
-          perspective,
-          selectedVariation?.id,
-          selectedVariation?.name,
-        );
-        extracted.push(...lichessPuzzles);
-      } catch {
-        // continue
-      }
-
-      // If perspective library has few puzzles, also fetch top motifs to populate a rich repertoire
-      const coreMotifs: TacticalMotif[] = [
-        "Fork / Double Attack",
-        "Pin",
-        "Skewer",
-        "Discovered Attack",
-      ];
-      for (const m of coreMotifs) {
-        if (m !== selectedMotif && (puzzleCountsByMotif[m] || 0) < 3) {
-          try {
-            const batchPuzzles = await fetchLichessThematicPuzzles(
-              m,
-              4,
-              perspective,
-              selectedVariation?.id,
-              selectedVariation?.name,
-            );
-            extracted.push(...batchPuzzles);
-          } catch {
-            // continue
-          }
-        }
-      }
-
-      // 2. Scan saved variation games matching the perspective or selected opening
-      const variationsToScan =
-        selectedVariationId !== "all" && selectedVariation
-          ? [selectedVariation]
-          : savedVariations.filter((v) => v.color === perspective || !v.color);
-
-      for (const v of variationsToScan) {
-        if (v.games && v.games.length > 0) {
-          for (const g of v.games) {
-            const gameTactics = extractTacticsFromGame(
-              g.id,
-              `${g.white.name} vs ${g.black.name}`,
-              g.movesSan,
-              v.id,
-              v.name,
-              perspective,
-            );
-            extracted.push(...gameTactics);
-          }
-        }
-      }
-
-      // Filter out forced checkmates and ensure only perspective tactics are saved
-      const uniqueExtracted: TacticsPuzzleItem[] = [];
-      const seenIds = new Set<string>();
-      for (const p of extracted) {
-        if (!p.isCheckmate && p.initialTurn === perspective && !seenIds.has(p.id)) {
-          seenIds.add(p.id);
-          uniqueExtracted.push(p);
-        }
-      }
-
-      if (uniqueExtracted.length > 0) {
-        await saveTacticsPuzzles(uniqueExtracted);
+      if (newPuzzles.length > 0) {
+        await saveTacticsPuzzles(newPuzzles);
         const updatedAll = await getTacticsPuzzles();
         const clean = updatedAll.filter((p) => !p.id.startsWith("seed-"));
         setAllPuzzles(clean);
-
-        // Identify motifs populated by new sync
-        const newlyPopulatedMotifs = Array.from(new Set(uniqueExtracted.map((p) => p.primaryMotif)));
-
-        // If selectedMotif has puzzles, stay on it; otherwise auto-select first motif with puzzles
-        const countInSelected =
-          uniqueExtracted.filter((p) => p.primaryMotif === selectedMotif).length +
-          (puzzleCountsByMotif[selectedMotif] || 0);
-
-        if (countInSelected > 0) {
-          setActivePuzzleIndex(0);
-        } else if (newlyPopulatedMotifs.length > 0) {
-          setSelectedMotif(newlyPopulatedMotifs[0]);
-          setActivePuzzleIndex(0);
-        }
-
-        toast.success("Tactics Database Updated!", {
-          description: `Added ${uniqueExtracted.length} verified ${perspective.toUpperCase()} tactics across ${newlyPopulatedMotifs.length} motifs.`,
+        setActivePuzzleIndex(0);
+        toast.success(`${targetMotif} Library Updated!`, {
+          description: `Added ${newPuzzles.length} verified ${perspective.toUpperCase()} tactics across levels.`,
         });
       } else {
         toast.info("Database Up to Date", {
-          description: `All available games and combinations for ${perspective.toUpperCase()} are already indexed.`,
+          description: `All available tactics for ${targetMotif} are already indexed.`,
         });
       }
+
+      setSyncProgress(finalProgress);
 
       // Update sync timestamp
       const updatedProg = { ...progress, lastSyncTimestamp: new Date().toISOString() };
@@ -445,6 +387,8 @@ function Tactics() {
       setIsSyncing(false);
     }
   };
+
+  const handleSyncNewTactics = () => handleSyncSingleMotif(selectedMotif);
 
   // Unlock next global tier
   const handleUnlockNextTier = async () => {
@@ -573,16 +517,30 @@ function Tactics() {
         title="Progressive Tactics Laboratory"
         description="Master opening-specific material combinations across 16 enforced motifs and 9 progressive difficulty tiers."
         right={
-          <Button
-            variant="default"
-            size="sm"
-            onClick={handleSyncNewTactics}
-            disabled={isSyncing}
-            className="shadow-sm font-semibold"
-          >
-            <RefreshCw className={cn("h-4 w-4 mr-1.5", isSyncing && "animate-spin")} />
-            {isSyncing ? "Syncing Tactics..." : "Sync New Games & Puzzles"}
-          </Button>
+          <div className="flex items-center gap-2">
+            <Button
+              variant="default"
+              size="sm"
+              onClick={() => handleSyncSingleMotif(selectedMotif)}
+              disabled={isSyncing}
+              className="shadow-sm font-semibold bg-primary text-primary-foreground hover:bg-primary/90"
+            >
+              <Zap className={cn("h-4 w-4 mr-1.5", isSyncing && "animate-spin")} />
+              {isSyncing
+                ? "Syncing Motif..."
+                : `Sync "${selectedMotif}" (${puzzleCountsByMotif[selectedMotif] || 0}/450)`}
+            </Button>
+            {syncProgress && !isSyncing && (
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => setIsSyncModalOpen(true)}
+                className="text-xs font-semibold"
+              >
+                View Sync HUD
+              </Button>
+            )}
+          </div>
         }
       />
 
@@ -953,15 +911,15 @@ function Tactics() {
                   </div>
                 )}
 
-                <div className="pt-3 flex justify-center">
+                <div className="pt-3 flex flex-wrap items-center justify-center gap-2">
                   <Button
                     variant="default"
-                    onClick={handleSyncNewTactics}
+                    onClick={() => handleSyncSingleMotif(selectedMotif)}
                     disabled={isSyncing}
-                    className="font-semibold shadow-md px-5"
+                    className="font-semibold shadow-md px-5 bg-primary text-primary-foreground hover:bg-primary/90"
                   >
-                    <RefreshCw className={cn("h-4 w-4 mr-2", isSyncing && "animate-spin")} />
-                    {isSyncing ? "Syncing Tactics..." : `Sync ${perspective.toUpperCase()} Tactics Library`}
+                    <Zap className={cn("h-4 w-4 mr-2", isSyncing && "animate-spin")} />
+                    {isSyncing ? "Syncing Motif..." : `Sync "${selectedMotif}" (Target: 450)`}
                   </Button>
                 </div>
               </div>
@@ -987,14 +945,14 @@ function Tactics() {
               );
 
               return (
-                <button
+                <div
                   key={motif}
                   onClick={() => {
                     setSelectedMotif(motif);
                     setActivePuzzleIndex(0);
                   }}
                   className={cn(
-                    "w-full flex items-center justify-between rounded-xl p-3 text-left transition-all border cursor-pointer",
+                    "w-full flex items-center justify-between rounded-xl p-3 text-left transition-all border cursor-pointer group",
                     isSelected
                       ? "border-primary bg-primary/10 shadow-sm"
                       : "border-border hover:bg-muted/30",
@@ -1010,26 +968,222 @@ function Tactics() {
                       )}
                     </div>
                     <div className="flex items-center gap-2 text-xs text-muted-foreground mt-0.5">
-                      <span>{count > 0 ? `${count} puzzles` : "0 puzzles"}</span>
+                      <span className="font-mono font-semibold text-primary">
+                        {count} / 450
+                      </span>
                       <span>·</span>
                       <span className="font-mono">{summary?.statusLabel}</span>
                     </div>
                   </div>
 
-                  <span
-                    className={cn(
-                      "shrink-0 rounded-md border px-2 py-0.5 text-[11px] font-semibold",
-                      badgeInfo.tone,
-                    )}
-                  >
-                    {badgeInfo.badge}
-                  </span>
-                </button>
+                  <div className="flex items-center gap-1.5 shrink-0">
+                    <span
+                      className={cn(
+                        "rounded-md border px-2 py-0.5 text-[11px] font-semibold",
+                        badgeInfo.tone,
+                      )}
+                    >
+                      {badgeInfo.badge}
+                    </span>
+
+                    <button
+                      type="button"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        handleSyncSingleMotif(motif);
+                      }}
+                      disabled={isSyncing}
+                      title={`Sync 450 puzzles for ${motif}`}
+                      className="rounded-lg border border-primary/30 bg-primary/10 hover:bg-primary/20 text-primary p-1.5 transition-colors cursor-pointer"
+                    >
+                      <Zap className="h-3.5 w-3.5" />
+                    </button>
+                  </div>
+                </div>
               );
             })}
           </div>
         </Panel>
       </TrainingLayout>
+
+      {/* Motif Batch Ingestion HUD & Progress Modal */}
+      {isSyncModalOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-xs p-4 animate-in fade-in">
+          <div className="relative w-full max-w-xl rounded-2xl border border-border bg-card p-6 shadow-2xl space-y-5 max-h-[90vh] overflow-y-auto">
+            {/* Header */}
+            <div className="flex items-start justify-between gap-3">
+              <div>
+                <div className="flex items-center gap-2">
+                  <span className="rounded-full bg-primary/15 text-primary text-[10px] font-mono uppercase font-bold px-2.5 py-0.5">
+                    Motif Batch Ingestion · 450 Target
+                  </span>
+                  <span className="text-xs font-mono text-muted-foreground">
+                    {perspective.toUpperCase()} Repertoire
+                  </span>
+                </div>
+                <h3 className="font-display text-xl font-bold text-foreground mt-1.5 flex items-center gap-2">
+                  <Zap className={cn("h-5 w-5 text-primary", isSyncing && "animate-spin")} />
+                  {syncProgress?.motif || selectedMotif}
+                </h3>
+                <p className="text-xs text-muted-foreground mt-0.5">
+                  {selectedVariation ? selectedVariation.name : "All Repertoire Lines"} · 50 puzzles per level
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={() => setIsSyncModalOpen(false)}
+                className="rounded-lg p-1 text-muted-foreground hover:bg-muted hover:text-foreground cursor-pointer"
+              >
+                <X className="h-5 w-5" />
+              </button>
+            </div>
+
+            {/* Overall Progress Bar */}
+            <div className="rounded-xl border border-border bg-secondary/30 p-4 space-y-2.5">
+              <div className="flex items-center justify-between text-xs">
+                <span className="font-semibold text-foreground">
+                  Total Ingestion Progress
+                </span>
+                <span className="font-mono text-primary font-bold">
+                  {syncProgress?.totalPuzzlesCollected || (puzzleCountsByMotif[selectedMotif] || 0)} / {syncProgress?.totalTarget || 450} Puzzles
+                </span>
+              </div>
+              <Progress
+                value={
+                  syncProgress?.totalTarget
+                    ? Math.min(100, (syncProgress.totalPuzzlesCollected / syncProgress.totalTarget) * 100)
+                    : Math.min(100, ((puzzleCountsByMotif[selectedMotif] || 0) / 450) * 100)
+                }
+                className="h-2.5"
+              />
+              <div className="flex items-center justify-between text-[11px] text-muted-foreground">
+                <span>
+                  {syncProgress?.startsAtLevel && syncProgress.startsAtLevel > 1
+                    ? `Starts at Level ${syncProgress.startsAtLevel} (Level 1 Exempt)`
+                    : "Starts at Level 1"}
+                </span>
+                <span>Target: 50 puzzles / level</span>
+              </div>
+            </div>
+
+            {/* 9-Tier Level Breakdown Grid */}
+            <div className="space-y-2">
+              <span className="text-xs font-mono uppercase tracking-wider text-muted-foreground font-semibold block">
+                9-Tier Level Progression
+              </span>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 text-xs">
+                {([1, 2, 3, 4, 5, 6, 7, 8, 9] as TacticalTierLevel[]).map((lvl) => {
+                  const count = syncProgress?.levelCounts[lvl] ?? 0;
+                  const target = syncProgress?.levelTargets[lvl] ?? 50;
+                  const isExempt = syncProgress?.exemptLevels.includes(lvl);
+                  const isDone = count >= target && !isExempt;
+                  const isCurrent = syncProgress?.currentLevel === lvl && isSyncing;
+
+                  return (
+                    <div
+                      key={lvl}
+                      className={cn(
+                        "rounded-xl border p-2.5 transition-all flex items-center justify-between gap-2",
+                        isCurrent
+                          ? "border-primary bg-primary/10 shadow-xs"
+                          : isDone
+                            ? "border-emerald-500/40 bg-emerald-500/5"
+                            : isExempt
+                              ? "border-border/50 bg-muted/20 opacity-60"
+                              : "border-border bg-card",
+                      )}
+                    >
+                      <div className="min-w-0 flex-1">
+                        <div className="flex items-center gap-1.5">
+                          <span className="font-bold text-foreground">
+                            L{lvl}: {TACTICAL_TIERS[lvl].name}
+                          </span>
+                          {isDone && <CheckCircle2 className="h-3.5 w-3.5 text-emerald-500 shrink-0" />}
+                          {isCurrent && <RefreshCw className="h-3 w-3 text-primary animate-spin shrink-0" />}
+                        </div>
+                        <span className="text-[10px] text-muted-foreground block font-mono">
+                          {TACTICAL_TIERS[lvl].description}
+                        </span>
+                      </div>
+
+                      <div className="text-right shrink-0">
+                        {isExempt ? (
+                          <span className="rounded-md bg-muted px-2 py-0.5 text-[10px] font-mono text-muted-foreground">
+                            Exempt
+                          </span>
+                        ) : (
+                          <span
+                            className={cn(
+                              "font-mono font-bold text-xs",
+                              isDone ? "text-emerald-500" : isCurrent ? "text-primary" : "text-muted-foreground",
+                            )}
+                          >
+                            {count} / {target}
+                          </span>
+                        )}
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+
+            {/* Live Status Message */}
+            <div className="rounded-xl border border-border bg-muted/30 p-3 text-xs font-mono text-muted-foreground flex items-center gap-2">
+              {isSyncing ? (
+                <RefreshCw className="h-4 w-4 text-primary animate-spin shrink-0" />
+              ) : (
+                <CheckCircle2 className="h-4 w-4 text-emerald-500 shrink-0" />
+              )}
+              <span className="truncate">
+                {syncProgress?.statusMessage || (isSyncing ? "Syncing in progress..." : "Ready")}
+              </span>
+            </div>
+
+            {/* Actions */}
+            <div className="flex flex-wrap items-center justify-between gap-2 pt-2 border-t border-border">
+              <Button
+                variant="secondary"
+                size="sm"
+                onClick={() => setIsSyncModalOpen(false)}
+              >
+                {isSyncing ? "Run in Background" : "Close"}
+              </Button>
+
+              <div className="flex items-center gap-2 ml-auto">
+                {!isSyncing && (
+                  <Button
+                    variant="default"
+                    size="sm"
+                    onClick={() => {
+                      setIsSyncModalOpen(false);
+                      setActivePuzzleIndex(0);
+                      toast.success(`Testing ${syncProgress?.motif || selectedMotif}!`, {
+                        description: "Board positioned for Puzzle 1 (Level 1).",
+                      });
+                    }}
+                    className="bg-emerald-600 hover:bg-emerald-700 text-white font-semibold shadow-sm"
+                  >
+                    <Play className="h-4 w-4 mr-1.5" />
+                    Test {syncProgress?.motif || selectedMotif} Now
+                  </Button>
+                )}
+
+                {!isSyncing && nextIncompleteMotif && (
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => handleSyncSingleMotif(nextIncompleteMotif)}
+                    className="border-primary/40 text-primary hover:bg-primary/10 font-semibold"
+                  >
+                    Sync Next: {nextIncompleteMotif} <ChevronRight className="h-4 w-4 ml-1" />
+                  </Button>
+                )}
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

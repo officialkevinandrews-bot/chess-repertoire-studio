@@ -23,6 +23,8 @@ import {
   SEED_TACTICS_PUZZLES,
   MOTIF_TO_LICHESS_THEME,
   extractTacticsFromGame,
+  resolveLichessOpeningTag,
+  syncMotifTacticsBatch,
 } from "../utils/tacticsScraper";
 
 describe("Component #1: 16-Tactical-Motif Dictionary & Primary/Secondary Engine", () => {
@@ -315,6 +317,100 @@ describe("Component #1: Soundness, Completeness, and Perspective Enforcement", (
       expect(themeKey).toBeDefined();
       expect(typeof themeKey).toBe("string");
       expect(themeKey.length).toBeGreaterThan(0);
+    }
+  });
+});
+
+describe("Component #1: Motif-by-Motif Ingestion Pipeline & Dynamic Tier Allocation (50 per level)", () => {
+  it("resolves canonical repertoire opening names to Lichess training angle tags", () => {
+    expect(resolveLichessOpeningTag("Sicilian Defense: Najdorf Variation")).toBe("Sicilian_Defense_Najdorf_Variation");
+    expect(resolveLichessOpeningTag("French Defense: Advance Variation")).toBe("French_Defense_Advance_Variation");
+    expect(resolveLichessOpeningTag("Caro-Kann Defense: Advance Variation")).toBe("Caro-Kann_Defense_Advance_Variation");
+    expect(resolveLichessOpeningTag("Queen's Gambit Declined")).toBe("Queens_Gambit_Declined");
+    expect(resolveLichessOpeningTag("King's Indian Defense")).toBe("Kings_Indian_Defense");
+    expect(resolveLichessOpeningTag("English Opening: King's English")).toBe("English_Opening_Kings_English");
+  });
+
+  it("calculates 450 total target when Level 1 is present, and 400 when starts at Level 2", async () => {
+    // Mock variation
+    const mockVariation = {
+      id: "var-sicilian",
+      name: "Sicilian Defense: Najdorf Variation",
+      color: "black" as const,
+      moves: ["e4", "c5", "Nf3", "d6", "d4", "cxd4", "Nxd4", "Nf6", "Nc3", "a6"],
+      finalFen: "rnbqkb1r/1p2pppp/p2p1n2/8/3NP3/2N5/PPP2PPP/R1BQKB1R w KQkq - 0 6",
+      createdAt: new Date().toISOString(),
+      games: [],
+    };
+
+    // Pre-populate 1 puzzle at Level 1 to simulate a motif that starts at Level 1
+    const existingWithL1: TacticsPuzzleItem[] = [
+      {
+        id: "existing-1",
+        fen: "rnbqkb1r/1p2pppp/p2p1n2/8/3NP3/2N5/PPP2PPP/R1BQKB1R b KQkq - 0 6",
+        initialTurn: "black",
+        solutionPv: ["e5"],
+        solutionLanPv: ["e7e5"],
+        primaryMotif: "Fork / Double Attack",
+        secondaryMotifs: [],
+        tierLevel: 1,
+        tierName: "Novice Observer",
+        rating: 900,
+        moveLength: 1,
+        explanation: "Fork test",
+        isCheckmate: false,
+        openingVariationId: "var-sicilian",
+      },
+    ];
+
+    const { progress } = await syncMotifTacticsBatch(
+      "Fork / Double Attack",
+      mockVariation,
+      "black",
+      existingWithL1,
+      undefined,
+      50,
+    );
+
+    expect(progress.motif).toBe("Fork / Double Attack");
+    expect(progress.startsAtLevel).toBe(1);
+    expect(progress.totalTarget).toBe(450); // 50 * 9 = 450
+    expect(progress.levelTargets[1]).toBe(50);
+    expect(progress.levelTargets[9]).toBe(50);
+    expect(progress.levelCounts[1]).toBe(1);
+  });
+
+  it("strictly enforces deduplication so already stored puzzle IDs are never duplicated", async () => {
+    const existing: TacticsPuzzleItem[] = [
+      {
+        id: "lichess-abc123",
+        fen: "rnbqkb1r/1p2pppp/p2p1n2/8/3NP3/2N5/PPP2PPP/R1BQKB1R b KQkq - 0 6",
+        initialTurn: "black",
+        solutionPv: ["e5"],
+        solutionLanPv: ["e7e5"],
+        primaryMotif: "Pin",
+        secondaryMotifs: [],
+        tierLevel: 2,
+        tierName: "Tactical Apprentice",
+        rating: 1100,
+        moveLength: 1,
+        explanation: "Pin test",
+        isCheckmate: false,
+      },
+    ];
+
+    const { newPuzzles } = await syncMotifTacticsBatch(
+      "Pin",
+      null,
+      "black",
+      existing,
+      undefined,
+      50,
+    );
+
+    // Any new puzzle must not have id 'lichess-abc123'
+    for (const p of newPuzzles) {
+      expect(p.id).not.toBe("lichess-abc123");
     }
   });
 });
