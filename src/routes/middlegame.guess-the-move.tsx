@@ -48,8 +48,13 @@ export const Route = createFileRoute("/middlegame/guess-the-move")({
 });
 
 function GuessTheMove() {
-  const { savedVariations, activeVariation, setActiveVariation, deleteVariation } =
-    useChessTraining();
+  const {
+    savedVariations,
+    activeVariation,
+    setActiveVariation,
+    deleteVariation,
+    recordTrainingResult,
+  } = useChessTraining();
 
   // Active variation priority: selected active, or first with games, or first saved
   const currentVar =
@@ -392,6 +397,8 @@ function GuessTheMove() {
         message: `${relativeEval.explanation} Try again or click "Reveal Master Move" to advance.`,
       });
 
+      recordTrainingResult(1, 0, 0);
+
       // Snap board back so user can retry
       setBoardFen(boardFen);
       return false;
@@ -415,6 +422,8 @@ function GuessTheMove() {
     setTotalScore((prev) => prev + earnedThisTurn);
     setPointsPopup(`+${earnedThisTurn} pts!`);
     setTimeout(() => setPointsPopup(null), 2500);
+
+    recordTrainingResult(1, 1, earnedThisTurn);
 
     if (isCorrect) {
       toast.success("Strategic Rationale Correct! (+10 pts)", {

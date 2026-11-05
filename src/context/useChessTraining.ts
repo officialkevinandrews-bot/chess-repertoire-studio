@@ -26,10 +26,13 @@ import {
 import {
   deleteVariationRecord,
   getAllVariations,
+  getUserTelemetry,
   saveVariationRecord,
+  updateUserTelemetry,
   type PracticalEndgameTarget,
   type SavedVariation,
   type ScrapedGame,
+  type UserProgressTelemetry,
 } from "../services/repertoireStorage";
 import { identifyOpening } from "../utils/openingNames";
 
@@ -43,9 +46,16 @@ export interface EngineEval {
   depth: number;
 }
 
-export type { PracticalEndgameTarget, SavedVariation, ScrapedGame };
+export type { PracticalEndgameTarget, SavedVariation, ScrapedGame, UserProgressTelemetry };
 
 interface ChessTrainingContextValue {
+  telemetry: UserProgressTelemetry;
+  recordTrainingResult: (
+    movesAttempted: number,
+    correctMoves: number,
+    pointsEarned: number,
+  ) => void;
+  recordEndgameSolved: (isPerfect: boolean, points: number) => void;
   fen: string;
   history: string[];
   orientation: Orientation;
@@ -96,9 +106,11 @@ export function ChessTrainingProvider({ children }: { children: ReactNode }) {
   const [lastClassification, setLastClassification] = useState<MoveClassification | null>(null);
   const [savedVariations, setSavedVariations] = useState<SavedVariation[]>([]);
   const [activeVariation, setActiveVariation] = useState<SavedVariation | null>(null);
+  const [telemetry, setTelemetry] = useState<UserProgressTelemetry>(getUserTelemetry());
 
-  // Hydrate saved variations from IndexedDB / localStorage on client mount
+  // Hydrate saved variations & telemetry from IndexedDB / localStorage on client mount
   useEffect(() => {
+    setTelemetry(getUserTelemetry());
     getAllVariations()
       .then((vars) => {
         setSavedVariations(vars);
@@ -109,6 +121,31 @@ export function ChessTrainingProvider({ children }: { children: ReactNode }) {
       .catch((err) => {
         console.warn("Could not load saved variations from storage:", err);
       });
+  }, []);
+
+  const recordTrainingResult = useCallback(
+    (movesAttempted: number, correctMoves: number, pointsEarned: number) => {
+      setTelemetry((prev) => {
+        const updated = updateUserTelemetry({
+          totalMovesGuessed: (prev.totalMovesGuessed || 0) + movesAttempted,
+          correctMovesGuessed: (prev.correctMovesGuessed || 0) + correctMoves,
+          totalScore: (prev.totalScore || 0) + pointsEarned,
+        });
+        return updated;
+      });
+    },
+    [],
+  );
+
+  const recordEndgameSolved = useCallback((isPerfect: boolean, points: number) => {
+    setTelemetry((prev) => {
+      const updated = updateUserTelemetry({
+        endgamesSolved: (prev.endgamesSolved || 0) + 1,
+        perfectConversions: (prev.perfectConversions || 0) + (isPerfect ? 1 : 0),
+        totalScore: (prev.totalScore || 0) + points,
+      });
+      return updated;
+    });
   }, []);
 
   const refreshVariations = useCallback(async () => {
@@ -297,6 +334,9 @@ export function ChessTrainingProvider({ children }: { children: ReactNode }) {
 
   const value = useMemo(
     () => ({
+      telemetry,
+      recordTrainingResult,
+      recordEndgameSolved,
       fen,
       history,
       orientation,
@@ -322,6 +362,9 @@ export function ChessTrainingProvider({ children }: { children: ReactNode }) {
       requestEvaluation,
     }),
     [
+      telemetry,
+      recordTrainingResult,
+      recordEndgameSolved,
       fen,
       history,
       orientation,

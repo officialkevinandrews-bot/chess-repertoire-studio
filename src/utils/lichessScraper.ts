@@ -19,6 +19,7 @@ import {
 } from "../services/repertoireStorage";
 import { identifyOpening } from "./openingNames";
 import { isTechnicalEndgame } from "./endgameDetector";
+import { extractPawnDna, calculatePawnDnaSimilarity } from "./pawnStructureDna";
 
 export interface ScraperProgress {
   stage:
@@ -218,9 +219,11 @@ export function extractPracticalEndgames(
   players: string,
   winner: "white" | "black" | "draw",
   userColor: "white" | "black" = "white",
+  openingFen?: string,
 ): PracticalEndgameTarget[] {
   const endgames: PracticalEndgameTarget[] = [];
   const history = chess.history({ verbose: true });
+  const openingDna = openingFen ? extractPawnDna(openingFen) : null;
 
   const replay = new Chess();
   for (let i = 0; i < history.length; i++) {
@@ -247,8 +250,31 @@ export function extractPracticalEndgames(
       // Strict Technical Endgame condition (Condition 1: No Queens, <=2 minors/rooks each; Condition 2: With Queens, <=1 minor/rook each)
       const egCheck = isTechnicalEndgame(replay);
       if (egCheck.isEndgame || nonPawnPieces <= 5 || totalPieces <= 8) {
-        const target: "Convert the Win" | "Force a Draw" =
-          winner === userColor ? "Convert the Win" : "Force a Draw";
+        let pawnDnaMatchPct = 85;
+        let structureName = "Endgame Structure";
+
+        // Step 4.1: Pawn Structure DNA Filtering & Target Position Clipping
+        if (openingDna) {
+          const endgameDna = extractPawnDna(replay);
+          const dnaComp = calculatePawnDnaSimilarity(openingDna, endgameDna);
+          // Strict Match Rule: filter out positions where central pawn skeleton completely mutated
+          if (!dnaComp.isMatch && dnaComp.similarityPct < 60) {
+            continue;
+          }
+          pawnDnaMatchPct = dnaComp.similarityPct;
+          structureName = dnaComp.structureName;
+        }
+
+        // Step 4.2: Dynamic Target Assignment based on master game outcome
+        let target: "Convert the Win" | "Hold the Draw" | "Defend and Hold" | "Force a Draw" =
+          "Convert the Win";
+        if (winner === userColor) {
+          target = "Convert the Win";
+        } else if (winner === "draw") {
+          target = "Hold the Draw";
+        } else {
+          target = "Defend and Hold";
+        }
 
         endgames.push({
           id: `eg-${gameId}-${moveNum}`,
@@ -258,6 +284,8 @@ export function extractPracticalEndgames(
           moveNumber: moveNum,
           target,
           sourceGameResult: winner === "draw" ? "1/2-1/2" : winner === "white" ? "1-0" : "0-1",
+          pawnDnaMatchPct,
+          structureName,
         });
 
         // Limit to 2 instructive endgame positions per game
@@ -488,6 +516,7 @@ export async function scrapeGamesForVariation(
         `${whiteName} – ${blackName}, ${year}`,
         winner,
         userColor,
+        finalFen,
       );
 
       return { game, endgames: egTargets };

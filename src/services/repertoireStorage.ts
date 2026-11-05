@@ -26,9 +26,21 @@ export interface PracticalEndgameTarget {
   gameId: string;
   players: string;
   fen: string;
-  target: "Convert the Win" | "Force a Draw";
+  target: "Convert the Win" | "Hold the Draw" | "Defend and Hold" | "Force a Draw";
   moveNumber: number;
   sourceGameResult: string;
+  pawnDnaMatchPct?: number;
+  structureName?: string;
+}
+
+export interface UserProgressTelemetry {
+  totalLinesCreated: number;
+  totalMovesGuessed: number;
+  correctMovesGuessed: number;
+  endgamesSolved: number;
+  perfectConversions: number;
+  totalScore: number;
+  lastUpdated: string;
 }
 
 export interface SavedVariation {
@@ -52,6 +64,55 @@ const DB_VERSION = 1;
 const STORE_NAME = "variations";
 const LS_BACKUP_KEY = "chess_buddy_saved_variations_meta";
 const TOKEN_KEY = "chess_buddy_lichess_token";
+const TELEMETRY_KEY = "chess_buddy_user_telemetry";
+
+export function getUserTelemetry(): UserProgressTelemetry {
+  const defaultTelemetry: UserProgressTelemetry = {
+    totalLinesCreated: 0,
+    totalMovesGuessed: 0,
+    correctMovesGuessed: 0,
+    endgamesSolved: 0,
+    perfectConversions: 0,
+    totalScore: 0,
+    lastUpdated: new Date().toISOString(),
+  };
+
+  if (typeof window === "undefined" || !window.localStorage) {
+    return defaultTelemetry;
+  }
+
+  try {
+    const raw = window.localStorage.getItem(TELEMETRY_KEY);
+    if (raw) {
+      return { ...defaultTelemetry, ...JSON.parse(raw) };
+    }
+  } catch {
+    // fallback
+  }
+
+  return defaultTelemetry;
+}
+
+export function updateUserTelemetry(
+  updates: Partial<UserProgressTelemetry>,
+): UserProgressTelemetry {
+  const current = getUserTelemetry();
+  const updated: UserProgressTelemetry = {
+    ...current,
+    ...updates,
+    lastUpdated: new Date().toISOString(),
+  };
+
+  if (typeof window !== "undefined" && window.localStorage) {
+    try {
+      window.localStorage.setItem(TELEMETRY_KEY, JSON.stringify(updated));
+    } catch {
+      // ignore
+    }
+  }
+
+  return updated;
+}
 
 let dbPromise: Promise<IDBDatabase> | null = null;
 
