@@ -493,62 +493,187 @@ export async function scrapeGamesForVariation(
     }
   };
 
-  // 1. Live Query via Lichess Masters Explorer if token present
+  // 1. Live Query via Lichess Masters & Player Explorer with persistent token
   if (token) {
     onProgress?.({
       stage: "explorer",
-      message: "Querying Lichess Masters Explorer (Grandmasters & IMs)...",
+      message: "Querying Lichess Masters & 2200-2500+ database...",
       gamesFound: collectedGames.length,
     });
 
-    try {
-      const cleanFen = encodeURIComponent(finalFen);
-      const res = await fetch(`https://explorer.lichess.ovh/masters?fen=${cleanFen}&topGames=15`, {
-        headers: {
-          Authorization: `Bearer ${token}`,
-          Accept: "application/json",
-        },
+    const liveGameCandidates: {
+      id: string;
+      matchType: "exact" | "parent-ply";
+      matchNote: string;
+    }[] = [];
+
+    const headers = {
+      Authorization: `Bearer ${token}`,
+      Accept: "application/json",
+    };
+
+    // Helper to query explorer for a FEN and collect top games
+    const queryExplorer = async (
+      searchFen: string,
+      matchType: "exact" | "parent-ply",
+      notePrefix: string,
+    ) => {
+      const clean = encodeURIComponent(searchFen);
+      try {
+        const [mastersRes, lichessRes] = await Promise.all([
+          fetch(`https://explorer.lichess.ovh/masters?fen=${clean}&topGames=15`, { headers }).catch(
+            () => null,
+          ),
+          fetch(
+            `https://explorer.lichess.ovh/lichess?fen=${clean}&ratings=2200,2500&speeds=blitz,rapid,classical&topGames=15&recentGames=15`,
+            { headers },
+          ).catch(() => null),
+        ]);
+
+        if (mastersRes && mastersRes.ok) {
+          const mData = await mastersRes.json();
+          for (const g of mData.topGames || []) {
+            if (g.id && !seenGameIds.has(g.id)) {
+              seenGameIds.add(g.id);
+              liveGameCandidates.push({
+                id: g.id,
+                matchType,
+                matchNote: `${notePrefix} (FIDE Masters DB)`,
+              });
+            }
+          }
+        }
+
+        if (lichessRes && lichessRes.ok) {
+          const lData = await lichessRes.json();
+          const combined = [...(lData.topGames || []), ...(lData.recentGames || [])];
+          for (const g of combined) {
+            if (g.id && !seenGameIds.has(g.id)) {
+              seenGameIds.add(g.id);
+              liveGameCandidates.push({
+                id: g.id,
+                matchType,
+                matchNote: `${notePrefix} (Lichess Master 2200-2500+)`,
+              });
+            }
+          }
+        }
+      } catch (err) {
+        console.warn("Explorer query warning:", err);
+      }
+    };
+
+    // 1A. Query exact terminal position
+    await queryExplorer(finalFen, "exact", "Exact Position Match");
+
+    // 1B. If more games needed, query parent positions (1 ply back, 2 plies back)
+    if (liveGameCandidates.length < targetGameCount && parentPositions.length > 0) {
+      for (const parent of parentPositions.slice(0, 2)) {
+        if (liveGameCandidates.length >= targetGameCount) break;
+        const dev = moves.length - parent.ply;
+        await queryExplorer(
+          parent.fen,
+          "parent-ply",
+          `Closest GM Sibling Line (${dev} ply deviation at move ${Math.floor(parent.ply / 2) + 1})`,
+        );
+      }
+    }
+
+    // 1C. Bulk Export Discovered Games
+    if (liveGameCandidates.length > 0) {
+      onProgress?.({
+        stage: "exporting",
+        message: `Exporting ${liveGameCandidates.length} real master games from Lichess...`,
+        gamesFound: liveGameCandidates.length,
       });
 
-      if (res.ok) {
-        const data = await res.json();
-        const topGames = data.topGames || [];
+      const candidateMap = new Map(liveGameCandidates.map((c) => [c.id, c]));
+      const idsToExport = liveGameCandidates.map((c) => c.id);
 
-        for (const tg of topGames) {
-          if (seenGameIds.has(tg.id)) continue;
-          seenGameIds.add(tg.id);
+      // Export in chunks of 30 games
+      const CHUNK_SIZE = 30;
+      for (let i = 0; i < idsToExport.length; i += CHUNK_SIZE) {
+        const chunk = idsToExport.slice(i, i + CHUNK_SIZE);
+        try {
+          const exportRes = await fetch("https://lichess.org/api/games/export/_ids", {
+            method: "POST",
+            headers: {
+              "Content-Type": "text/plain",
+              Accept: "application/x-chess-pgn",
+            },
+            body: chunk.join(","),
+          });
 
-          try {
-            const gameRes = await fetch(`https://lichess.org/game/export/${tg.id}`, {
-              headers: { Accept: "application/x-chess-pgn" },
-            });
-            if (gameRes.ok) {
-              const pgn = await gameRes.text();
+          if (exportRes.ok) {
+            const pgnText = await exportRes.text();
+            const rawPgns = pgnText
+              .split(/\n\n(?=\[Event )|\r\n\r\n(?=\[Event )/)
+              .map((p) => p.trim())
+              .filter(Boolean);
+
+            for (const pgn of rawPgns) {
+              const idMatch = pgn.match(
+                /\[(?:GameId|Site) "(?:https:\/\/lichess\.org\/)?([A-Za-z0-9]{8,12})/,
+              );
+              const matchedId = idMatch ? idMatch[1] : null;
+              const meta = matchedId ? candidateMap.get(matchedId) : null;
+
               const processed = processPgn(
                 pgn,
-                tg.white?.name,
-                tg.black?.name,
-                tg.winner === "white" ? "white" : tg.winner === "black" ? "black" : "draw",
-                tg.white?.rating,
-                tg.black?.rating,
-                "GM",
-                "GM",
-                96,
-                "exact",
-                "Grandmaster Master Explorer match",
+                undefined,
+                undefined,
+                undefined,
+                undefined,
+                undefined,
+                undefined,
+                undefined,
+                undefined,
+                meta?.matchType || "exact",
+                meta?.matchNote,
               );
+
               if (processed) {
                 collectedGames.push(processed.game);
                 collectedEndgames.push(...processed.endgames);
               }
             }
-          } catch {
-            // continue on individual game failure
+          } else {
+            throw new Error(`Bulk export returned status ${exportRes.status}`);
+          }
+        } catch {
+          // Fallback to individual export for this chunk
+          for (const gameId of chunk) {
+            try {
+              const singleRes = await fetch(`https://lichess.org/game/export/${gameId}`, {
+                headers: { Accept: "application/x-chess-pgn" },
+              });
+              if (singleRes.ok) {
+                const pgn = await singleRes.text();
+                const meta = candidateMap.get(gameId);
+                const processed = processPgn(
+                  pgn,
+                  undefined,
+                  undefined,
+                  undefined,
+                  undefined,
+                  undefined,
+                  undefined,
+                  undefined,
+                  undefined,
+                  meta?.matchType || "exact",
+                  meta?.matchNote,
+                );
+                if (processed) {
+                  collectedGames.push(processed.game);
+                  collectedEndgames.push(...processed.endgames);
+                }
+              }
+            } catch {
+              // skip individual failed export
+            }
           }
         }
       }
-    } catch (err) {
-      console.warn("Live Lichess query encountered error:", err);
     }
   }
 

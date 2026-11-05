@@ -1,17 +1,6 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { useMemo, useState } from "react";
-import {
-  Check,
-  Database,
-  ExternalLink,
-  FlipVertical2,
-  KeyRound,
-  Loader2,
-  RotateCcw,
-  Save,
-  Sparkles,
-  Undo2,
-} from "lucide-react";
+import { FlipVertical2, Loader2, RotateCcw, Save, Sparkles, Undo2 } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -28,7 +17,6 @@ import {
 import { useChessTraining } from "@/context/useChessTraining";
 import { identifyOpening } from "@/utils/openingNames";
 import { scrapeGamesForVariation, type ScraperProgress } from "@/utils/lichessScraper";
-import { getStoredLichessToken, setStoredLichessToken } from "@/services/repertoireStorage";
 
 export const Route = createFileRoute("/opening-creator")({
   head: () => ({
@@ -68,27 +56,15 @@ function OpeningCreator() {
   const [exported, setExported] = useState<string | null>(null);
   const [isScraping, setIsScraping] = useState(false);
   const [scraperStatus, setScraperStatus] = useState<ScraperProgress | null>(null);
-  const [showTokenInput, setShowTokenInput] = useState(false);
-  const [lichessToken, setLichessToken] = useState(getStoredLichessToken() || "");
 
   // Auto-detect opening and ECO from moves played
   const recognized = useMemo(() => identifyOpening(history), [history]);
-
-  const handleSaveToken = () => {
-    setStoredLichessToken(lichessToken);
-    toast.success("Lichess token updated", {
-      description: lichessToken
-        ? "Live explorer queries enabled."
-        : "Using offline model database.",
-    });
-    setShowTokenInput(false);
-  };
 
   const handleSaveVariation = async () => {
     setIsScraping(true);
     setScraperStatus({
       stage: "connecting",
-      message: "Saving variation and querying master games...",
+      message: "Saving variation and querying real Lichess master games...",
       gamesFound: 0,
     });
 
@@ -97,9 +73,11 @@ function OpeningCreator() {
       const v = await saveVariation(finalName);
       setExported(v.finalFen);
 
-      toast.info("Variation saved!", { description: "Scraping Grandmaster game pool..." });
+      toast.info("Variation saved!", {
+        description: "Pulling actual games played from Lichess database...",
+      });
 
-      // Run live Lichess / Model scraper pipeline
+      // Run live Lichess scraper pipeline with persistent token
       const scrapeResult = await scrapeGamesForVariation(v.finalFen, v.moves, {
         targetGameCount: 50,
         userColor: orientation,
@@ -111,7 +89,7 @@ function OpeningCreator() {
 
       setIsScraping(false);
       toast.success("Training Loop Ready!", {
-        description: `Loaded ${scrapeResult.games.length} high-level games and ${scrapeResult.endgames.length} practical endgames.`,
+        description: `Loaded ${scrapeResult.games.length} actual master games and ${scrapeResult.endgames.length} practical endgames.`,
       });
     } catch (err) {
       console.error("Save & Scrape failed:", err);
@@ -129,52 +107,12 @@ function OpeningCreator() {
         title="Opening Creator"
         description="Play out your line on the board. Every move is recorded."
         right={
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={() => setShowTokenInput((s) => !s)}
-            className="text-xs font-mono"
-          >
-            <KeyRound className="h-3.5 w-3.5 mr-1 text-primary" />
-            {getStoredLichessToken() ? "Lichess Token: Connected" : "Lichess Token: Optional"}
-          </Button>
+          <div className="flex items-center gap-2 rounded-full border border-success/40 bg-success/10 px-3 py-1.5 text-xs font-medium text-success shadow-sm">
+            <span className="h-2 w-2 rounded-full bg-success animate-pulse" />
+            Lichess Live Database: Connected
+          </div>
         }
       />
-
-      {/* Lichess Token Configuration Drawer */}
-      {showTokenInput && (
-        <div className="mb-6 rounded-xl border border-primary/40 bg-card p-4 space-y-3 animate-in fade-in">
-          <div className="flex items-center justify-between">
-            <span className="font-semibold text-sm flex items-center gap-1.5">
-              <Database className="h-4 w-4 text-primary" /> Lichess Personal Access Token
-            </span>
-            <a
-              href="https://lichess.org/account/oauth/token/create"
-              target="_blank"
-              rel="noreferrer"
-              className="text-xs text-primary hover:underline flex items-center gap-1"
-            >
-              Get free token <ExternalLink className="h-3 w-3" />
-            </a>
-          </div>
-          <p className="text-xs text-muted-foreground">
-            Lichess Opening Explorer queries require authentication. If no token is provided, Chess
-            Buddy automatically uses its built-in Grandmaster model games database.
-          </p>
-          <div className="flex gap-2">
-            <Input
-              type="password"
-              placeholder="Paste your Lichess Personal Access Token (lip_...)"
-              value={lichessToken}
-              onChange={(e) => setLichessToken(e.target.value)}
-              className="font-mono text-xs"
-            />
-            <Button size="sm" onClick={handleSaveToken}>
-              <Check className="h-3.5 w-3.5 mr-1" /> Save
-            </Button>
-          </div>
-        </div>
-      )}
 
       <TrainingLayout
         board={

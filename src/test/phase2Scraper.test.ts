@@ -7,9 +7,18 @@ import {
   scrapeGamesForVariation,
 } from "../utils/lichessScraper";
 import { Chess } from "chess.js";
-import type { ScrapedGame } from "../services/repertoireStorage";
+import {
+  DEFAULT_LICHESS_TOKEN,
+  getStoredLichessToken,
+  type ScrapedGame,
+} from "../services/repertoireStorage";
 
 describe("Phase 2: Opening Identification & Repertoire Scraper", () => {
+  it("has permanent Lichess token configured by default", () => {
+    expect(DEFAULT_LICHESS_TOKEN.startsWith("lip_")).toBe(true);
+    expect(DEFAULT_LICHESS_TOKEN.length).toBe(24);
+    expect(getStoredLichessToken().startsWith("lip_")).toBe(true);
+  });
   it("identifies Sicilian Najdorf from moves", () => {
     const moves = ["e4", "c5", "Nf3", "d6", "d4", "cxd4", "Nxd4", "Nf6", "Nc3", "a6"];
     const res = identifyOpening(moves);
