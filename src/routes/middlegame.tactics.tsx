@@ -45,9 +45,11 @@ import {
   saveTacticsProgress,
   getTacticsPuzzles,
   saveTacticsPuzzles,
+  clearNonForkTacticsPuzzles,
   recordTacticsAttempt,
   clearRemedialItem,
 } from "@/services/repertoireStorage";
+import { PREPOPULATED_PIRC_TACTICS } from "@/utils/prepopulatedTactics";
 import {
   evaluateGlobalTierProgress,
   unlockNextGlobalTier,
@@ -124,39 +126,41 @@ function Tactics() {
     getTacticsProgress().then((p) => setProgress(p));
     getTacticsPuzzles().then(async (saved) => {
       const realPuzzles = (saved || []).filter((p) => !p.id.startsWith("seed-"));
-      setAllPuzzles(realPuzzles);
 
-      // Check if user's line needs initial full 450-puzzle population
-      const targetVar = activeVariation || (savedVariations.length > 0 ? savedVariations[0] : null);
-      if (targetVar) {
-        const varPersp = targetVar.color || "black";
-        const forkCount = realPuzzles.filter(
-          (p) =>
-            p.primaryMotif === "Fork / Double Attack" &&
-            p.initialTurn === varPersp &&
-            (!p.openingVariationId || p.openingVariationId === targetVar.id),
-        ).length;
+      // Check if any non-fork puzzles are invalid (e.g. from Lichess batch or non-variation)
+      // or if any motif has fewer than 450 puzzles
+      const hasCorruptedNonForks = realPuzzles.some(
+        (p) =>
+          p.primaryMotif !== "Fork / Double Attack" &&
+          (p.id.startsWith("lichess-") || !p.id.startsWith("pirc-")),
+      );
+      const isMissingMotifs = TACTICAL_MOTIFS.some((m) => {
+        const count = realPuzzles.filter((p) => p.primaryMotif === m).length;
+        return count < 450;
+      });
 
-        if (forkCount < 450) {
-          try {
-            const { newPuzzles } = await syncMotifTacticsBatch(
-              "Fork / Double Attack",
-              targetVar,
-              varPersp,
-              realPuzzles,
-              undefined,
-              50,
-            );
-            if (newPuzzles.length > 0) {
-              await saveTacticsPuzzles(newPuzzles);
-              const refreshed = await getTacticsPuzzles();
-              const clean = refreshed.filter((p) => !p.id.startsWith("seed-"));
-              setAllPuzzles(clean);
-            }
-          } catch {
-            // continue
-          }
-        }
+      if (hasCorruptedNonForks || isMissingMotifs || realPuzzles.length < 7200) {
+        // 1. Strictly preserve all existing verified Fork puzzles while purging any corrupted non-fork tactics
+        const keptForks = await clearNonForkTacticsPuzzles();
+
+        // 2. Prepare full 7,200 catalog:
+        // - For Fork: preserve user's existing correct forks; supplement with missing ones from PREPOPULATED_PIRC_TACTICS to reach exactly 450
+        const forkIdSet = new Set(keptForks.map((f) => f.id));
+        const neededForks = PREPOPULATED_PIRC_TACTICS.filter(
+          (p) => p.primaryMotif === "Fork / Double Attack" && !forkIdSet.has(p.id),
+        );
+        const supplementedForks = [...keptForks, ...neededForks].slice(0, 450);
+
+        // - For all other 15 motifs: populate all 450 puzzles each from the master Pirc catalog
+        const nonForkPuzzles = PREPOPULATED_PIRC_TACTICS.filter(
+          (p) => p.primaryMotif !== "Fork / Double Attack",
+        );
+
+        const fullCatalog = [...supplementedForks, ...nonForkPuzzles];
+        await saveTacticsPuzzles(fullCatalog);
+        setAllPuzzles(fullCatalog);
+      } else {
+        setAllPuzzles(realPuzzles);
       }
     });
   }, [activeVariation, savedVariations]);
@@ -421,6 +425,51 @@ function Tactics() {
     }
   };
 
+  // Sync all 16 canonical motifs sequentially for the selected variation
+  const handleSyncAllMotifs = async () => {
+    setIsSyncing(true);
+    setIsSyncModalOpen(true);
+
+    try {
+      let currentPool = [...allPuzzles];
+      let totalNew = 0;
+
+      for (const motif of TACTICAL_MOTIFS) {
+        setSelectedMotif(motif);
+        const { newPuzzles, progress: finalProgress } = await syncMotifTacticsBatch(
+          motif,
+          selectedVariation,
+          perspective,
+          currentPool,
+          (prog) => setSyncProgress({ ...prog }),
+          50,
+        );
+
+        if (newPuzzles.length > 0) {
+          await saveTacticsPuzzles(newPuzzles);
+          currentPool = [...currentPool, ...newPuzzles];
+          setAllPuzzles(currentPool);
+          totalNew += newPuzzles.length;
+        }
+        setSyncProgress(finalProgress);
+      }
+
+      toast.success("All 16 Motifs Synced!", {
+        description: `Successfully synchronized ${totalNew} verified tactics for ${selectedVariation?.name || "your repertoire"}.`,
+      });
+
+      const updatedProg = { ...progress, lastSyncTimestamp: new Date().toISOString() };
+      await saveTacticsProgress(updatedProg);
+      setProgress(updatedProg);
+    } catch {
+      toast.error("Batch Sync Encountered an Issue", {
+        description: "Existing database tactics preserved safely.",
+      });
+    } finally {
+      setIsSyncing(false);
+    }
+  };
+
   const handleSyncNewTactics = () => handleSyncSingleMotif(selectedMotif);
 
   // Unlock next global tier
@@ -562,6 +611,16 @@ function Tactics() {
               {isSyncing
                 ? "Syncing Motif..."
                 : `Sync "${selectedMotif}" (${puzzleCountsByMotif[selectedMotif] || 0}/450)`}
+            </Button>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={handleSyncAllMotifs}
+              disabled={isSyncing}
+              className="shadow-sm font-semibold border-primary/40 hover:bg-primary/10"
+            >
+              <RefreshCw className={cn("h-4 w-4 mr-1.5", isSyncing && "animate-spin")} />
+              Sync All 16 Motifs
             </Button>
             {syncProgress && !isSyncing && (
               <Button

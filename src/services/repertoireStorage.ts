@@ -463,6 +463,63 @@ export async function saveTacticsPuzzles(puzzles: TacticsPuzzleItem[]): Promise<
   }
 }
 
+/**
+ * Clears non-fork tactics while strictly preserving all existing verified Fork puzzles.
+ * Returns the preserved Fork puzzles.
+ */
+export async function clearNonForkTacticsPuzzles(): Promise<TacticsPuzzleItem[]> {
+  let keptForks: TacticsPuzzleItem[] = [];
+
+  try {
+    const db = await getDb();
+    keptForks = await new Promise<TacticsPuzzleItem[]>((resolve) => {
+      const tx = db.transaction(TACTICS_STORE_NAME, "readwrite");
+      const store = tx.objectStore(TACTICS_STORE_NAME);
+      const req = store.getAll();
+      req.onsuccess = () => {
+        const items = (req.result as TacticsPuzzleItem[]) || [];
+        const forks = items.filter(
+          (p) =>
+            p.primaryMotif === "Fork / Double Attack" &&
+            !p.id.startsWith("seed-") &&
+            !p.isCheckmate,
+        );
+        store.clear();
+        for (const f of forks) {
+          store.put(f);
+        }
+        resolve(forks);
+      };
+      req.onerror = () => resolve([]);
+    });
+  } catch {
+    // fallback
+  }
+
+  if (typeof window !== "undefined" && window.localStorage) {
+    try {
+      const raw = window.localStorage.getItem(TACTICS_LS_KEY);
+      if (raw) {
+        const items: TacticsPuzzleItem[] = JSON.parse(raw);
+        const lsForks = items.filter(
+          (p) =>
+            p.primaryMotif === "Fork / Double Attack" &&
+            !p.id.startsWith("seed-") &&
+            !p.isCheckmate,
+        );
+        if (keptForks.length === 0) {
+          keptForks = lsForks;
+        }
+        window.localStorage.setItem(TACTICS_LS_KEY, JSON.stringify(keptForks));
+      }
+    } catch {
+      // ignore
+    }
+  }
+
+  return keptForks;
+}
+
 export async function getTacticsPuzzles(options?: {
   motif?: TacticalMotif;
   tier?: TacticalTierLevel;

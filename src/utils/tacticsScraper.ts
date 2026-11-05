@@ -408,6 +408,72 @@ const LEVEL_DIFFICULTIES: Record<
   9: "hardest",
 };
 
+function selectMotifMove(moves: any[], motif: TacticalMotif, index: number) {
+  if (motif.includes("Pin")) {
+    return (
+      moves.find((m) => (m.piece === "b" || m.piece === "r" || m.piece === "q") && !m.san.includes("+")) ||
+      moves.find((m) => m.captured && m.captured !== "p") ||
+      moves[index % moves.length]
+    );
+  }
+  if (motif.includes("Skewer")) {
+    return (
+      moves.find((m) => m.san.includes("+")) ||
+      moves.find((m) => (m.piece === "b" || m.piece === "r") && m.captured) ||
+      moves[index % moves.length]
+    );
+  }
+  if (motif.includes("Fork")) {
+    return (
+      moves.find((m) => m.piece === "n" && (m.captured || m.san.includes("+"))) ||
+      moves.find((m) => m.piece === "p" && (m.to.includes("5") || m.to.includes("4"))) ||
+      moves.find((m) => m.captured && m.captured !== "p") ||
+      moves[index % moves.length]
+    );
+  }
+  if (motif.includes("Discovered")) {
+    return (
+      moves.find((m) => (m.piece === "n" || m.piece === "b") && m.san.includes("+")) ||
+      moves.find((m) => m.piece === "n" && m.captured) ||
+      moves[index % moves.length]
+    );
+  }
+  if (motif.includes("Advanced Pawn")) {
+    return (
+      moves.find((m) => m.piece === "p" && (m.to.includes("4") || m.to.includes("3") || m.to.includes("2") || m.to.includes("5") || m.to.includes("6"))) ||
+      moves.find((m) => m.piece === "p") ||
+      moves[index % moves.length]
+    );
+  }
+  if (motif.includes("Intermezzo")) {
+    return (
+      moves.find((m) => m.san.includes("+")) ||
+      moves.find((m) => m.captured && m.captured !== "p") ||
+      moves[index % moves.length]
+    );
+  }
+  if (motif.includes("Removal of the Defender")) {
+    return (
+      moves.find((m) => m.captured && (m.captured === "n" || m.captured === "b" || m.captured === "r")) ||
+      moves.find((m) => m.captured) ||
+      moves[index % moves.length]
+    );
+  }
+  if (motif.includes("Trapped")) {
+    return (
+      moves.find((m) => m.piece === "p" && m.captured) ||
+      moves.find((m) => m.piece === "n" || m.piece === "b") ||
+      moves[index % moves.length]
+    );
+  }
+  return (
+    moves.find((m) => m.captured && m.captured !== "p") ||
+    moves.find((m) => m.captured) ||
+    moves.find((m) => m.san.includes("+")) ||
+    moves[index % moves.length]
+  );
+}
+
 /**
  * Synthesizes board-verified, opening-specific tactical combinations directly derived from
  * the user's opening repertoire lines and natural middlegame continuations.
@@ -448,15 +514,20 @@ export function generateOpeningTacticsPool(
   const motifSlug = motif.replace(/[^a-zA-Z0-9]/g, "").slice(0, 5).toLowerCase();
 
   // Precompute base opening position once for instant instantiation
-  const baseChess = new Chess();
-  for (const m of openingMoves) {
-    try {
-      baseChess.move(m);
-    } catch {
-      break;
+  let baseFen: string;
+  if (variation?.finalFen) {
+    baseFen = variation.finalFen;
+  } else {
+    const baseChess = new Chess();
+    for (const m of openingMoves) {
+      try {
+        baseChess.move(m);
+      } catch {
+        break;
+      }
     }
+    baseFen = baseChess.fen();
   }
-  const baseFen = baseChess.fen();
   const targetTurn = perspective === "black" ? "b" : "w";
 
   for (let i = 0; items.length < countNeeded && i < 350; i++) {
@@ -515,12 +586,8 @@ export function generateOpeningTacticsPool(
 
         let chosen;
         if (step % 2 === 0) {
-          // Player's move: prioritize capturing or checking moves that win material
-          chosen =
-            turnMoves.find((m) => m.captured && m.captured !== "p") ||
-            turnMoves.find((m) => m.captured) ||
-            turnMoves.find((m) => m.san.includes("+")) ||
-            turnMoves[(i + step) % turnMoves.length];
+          // Player's move: motif-driven selection
+          chosen = selectMotifMove(turnMoves, motif, i + step);
         } else {
           // Opponent response
           chosen =
@@ -733,6 +800,21 @@ export async function syncMotifTacticsBatch(
           const fullGame = new Chess();
           fullGame.loadPgn(g.pgn);
           const history = fullGame.history();
+
+          // STRICT VARIATION MATCHING:
+          // Never accept generic Lichess puzzles unless the source game genuinely starts with the user's variation moves!
+          if (variation?.moves && variation.moves.length > 0) {
+            if (history.length < variation.moves.length) continue;
+            let matches = true;
+            for (let mIdx = 0; mIdx < variation.moves.length; mIdx++) {
+              if (history[mIdx]?.toLowerCase() !== variation.moves[mIdx]?.toLowerCase()) {
+                matches = false;
+                break;
+              }
+            }
+            if (!matches) continue;
+          }
+
           const targetPly = p.initialPly + 1;
           if (targetPly > history.length) continue;
 

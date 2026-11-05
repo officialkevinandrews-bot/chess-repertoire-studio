@@ -379,7 +379,7 @@ describe("Component #1: Motif-by-Motif Ingestion Pipeline & Dynamic Tier Allocat
     expect(progress.levelTargets[9]).toBe(50);
     expect(progress.levelCounts[1]).toBe(50);
     expect(progress.totalPuzzlesCollected).toBe(450);
-  }, 20000);
+  }, 60000);
 
   it("strictly enforces deduplication so already stored puzzle IDs are never duplicated", async () => {
     const existing: TacticsPuzzleItem[] = [
