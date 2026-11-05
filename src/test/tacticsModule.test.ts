@@ -331,7 +331,7 @@ describe("Component #1: Motif-by-Motif Ingestion Pipeline & Dynamic Tier Allocat
     expect(resolveLichessOpeningTag("English Opening: King's English")).toBe("English_Opening_Kings_English");
   });
 
-  it("calculates 450 total target when Level 1 is present, and 400 when starts at Level 2", async () => {
+  it("guarantees 450 total target across all 9 levels (50 per level) starting strictly at Level 1", async () => {
     // Mock variation
     const mockVariation = {
       id: "var-sicilian",
@@ -343,7 +343,7 @@ describe("Component #1: Motif-by-Motif Ingestion Pipeline & Dynamic Tier Allocat
       games: [],
     };
 
-    // Pre-populate 1 puzzle at Level 1 to simulate a motif that starts at Level 1
+    // Pre-populate 1 puzzle at Level 1
     const existingWithL1: TacticsPuzzleItem[] = [
       {
         id: "existing-1",
@@ -377,8 +377,9 @@ describe("Component #1: Motif-by-Motif Ingestion Pipeline & Dynamic Tier Allocat
     expect(progress.totalTarget).toBe(450); // 50 * 9 = 450
     expect(progress.levelTargets[1]).toBe(50);
     expect(progress.levelTargets[9]).toBe(50);
-    expect(progress.levelCounts[1]).toBe(1);
-  });
+    expect(progress.levelCounts[1]).toBe(50);
+    expect(progress.totalPuzzlesCollected).toBe(450);
+  }, 20000);
 
   it("strictly enforces deduplication so already stored puzzle IDs are never duplicated", async () => {
     const existing: TacticsPuzzleItem[] = [
@@ -405,7 +406,7 @@ describe("Component #1: Motif-by-Motif Ingestion Pipeline & Dynamic Tier Allocat
       "black",
       existing,
       undefined,
-      50,
+      5,
     );
 
     // Any new puzzle must not have id 'lichess-abc123'

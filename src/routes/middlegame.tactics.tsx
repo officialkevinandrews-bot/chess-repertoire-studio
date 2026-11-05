@@ -1057,12 +1057,10 @@ function Tactics() {
                 className="h-2.5"
               />
               <div className="flex items-center justify-between text-[11px] text-muted-foreground">
-                <span>
-                  {syncProgress?.startsAtLevel && syncProgress.startsAtLevel > 1
-                    ? `Starts at Level ${syncProgress.startsAtLevel} (Level 1 Exempt)`
-                    : "Starts at Level 1"}
+                <span className="font-semibold text-emerald-400">
+                  Starts at Level 1 (50 puzzles/level across all 9 levels)
                 </span>
-                <span>Target: 50 puzzles / level</span>
+                <span>Target: 450 total</span>
               </div>
             </div>
 

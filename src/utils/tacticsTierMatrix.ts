@@ -13,40 +13,41 @@ export function classifyTacticalTier(
   rating: number,
   moveCountOrPlies: number,
 ): { tierLevel: TacticalTierLevel; tierName: TacticalTierName; tierDef: TacticalTierDef } {
-  // Normalize plies to full moves (e.g. 2 plies = 1 full move)
   const fullMoves = moveCountOrPlies > 6 ? Math.round(moveCountOrPlies / 2) : moveCountOrPlies;
 
   let level: TacticalTierLevel = 1;
 
-  if (rating < 1000 && fullMoves <= 1) {
-    level = 1;
+  if (rating < 1000 || (fullMoves <= 1 && rating < 1150)) {
+    level = 1; // Level 1: Novice Observer (direct 1-move tactical strike)
   } else if (rating < 1300 && fullMoves <= 2) {
-    level = 2;
+    level = 2; // Level 2: Tactical Apprentice
   } else if (rating < 1500 && fullMoves <= 2) {
-    level = 3;
+    level = 3; // Level 3: Pattern Scout
   } else if (rating < 1700 && fullMoves <= 3) {
-    level = 4;
+    level = 4; // Level 4: Combinant
   } else if (rating < 1900 && fullMoves <= 3) {
-    level = 5;
+    level = 5; // Level 5: Board Visionary
   } else if (rating < 2100 && fullMoves <= 4) {
-    level = 6;
+    level = 6; // Level 6: Calculation Specialist
   } else if (rating < 2300 && fullMoves <= 4) {
-    level = 7;
+    level = 7; // Level 7: Tactical Strategist
   } else if (rating < 2500 && fullMoves <= 5) {
-    level = 8;
+    level = 8; // Level 8: Master Tactician
   } else {
-    level = 9;
+    level = 9; // Level 9: Grandmaster Virtuoso
   }
 
   // Fallback rating boundaries if moves diverge
-  if (rating >= 2500) level = 9;
-  else if (rating >= 2300 && level < 8) level = 8;
-  else if (rating >= 2100 && level < 7) level = 7;
-  else if (rating >= 1900 && level < 6) level = 6;
-  else if (rating >= 1700 && level < 5) level = 5;
-  else if (rating >= 1500 && level < 4) level = 4;
-  else if (rating >= 1300 && level < 3) level = 3;
-  else if (rating >= 1000 && level < 2) level = 2;
+  if (fullMoves > 1) {
+    if (rating >= 2500) level = 9;
+    else if (rating >= 2300 && level < 8) level = 8;
+    else if (rating >= 2100 && level < 7) level = 7;
+    else if (rating >= 1900 && level < 6) level = 6;
+    else if (rating >= 1700 && level < 5) level = 5;
+    else if (rating >= 1500 && level < 4) level = 4;
+    else if (rating >= 1300 && level < 3) level = 3;
+    else if (rating >= 1150 && level < 2) level = 2;
+  }
 
   const def = TACTICAL_TIERS[level];
   return {
