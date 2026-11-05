@@ -7,6 +7,7 @@ export interface EvaluationOptions {
   movetime?: number;
   onProgress?: (partial: EngineAnalysisResult) => void;
   lastMove?: { from: string; to: string };
+  multiPv?: number;
 }
 
 export class StockfishClient {
@@ -17,7 +18,7 @@ export class StockfishClient {
   private currentOptions: EvaluationOptions | null = null;
   private resolveCurrent: ((result: EngineAnalysisResult) => void) | null = null;
   private currentLines: Map<number, EnginePVLine> = new Map();
-  private maxDepth = 15;
+  private maxDepth = 25;
   private workerPath: string;
 
   constructor(workerPath = "/stockfish.js") {
@@ -25,7 +26,7 @@ export class StockfishClient {
   }
 
   /**
-   * Initializes the Stockfish Web Worker and configures MultiPV 3.
+   * Initializes the Stockfish Web Worker and configures Skill Level 20, MultiPV, and Depth 25+.
    * Safe to call on the server (will cleanly no-op if Worker is not defined).
    */
   public async init(): Promise<boolean> {
@@ -51,9 +52,12 @@ export class StockfishClient {
           resolve(false);
         };
 
-        // Initialize UCI and permanently lock MultiPV to 3
+        // Initialize UCI with Grandmaster depth options
         this.sendCommand("uci");
         this.sendCommand("setoption name MultiPV value 3");
+        this.sendCommand("setoption name Threads value 2");
+        this.sendCommand("setoption name Hash value 64");
+        this.sendCommand("setoption name Skill Level value 20");
         this.sendCommand("isready");
 
         const checkReady = (e: MessageEvent) => {
@@ -82,14 +86,14 @@ export class StockfishClient {
   }
 
   /**
-   * Evaluates a chess position given its FEN string using MultiPV 3.
+   * Evaluates a chess position given its FEN string using Deep Stockfish (Depth 25+).
    */
   public async evaluate(
     fen: string,
     options: EvaluationOptions = {},
   ): Promise<EngineAnalysisResult> {
-    const depth = options.depth || 15;
-    const movetime = options.movetime || 1000;
+    const depth = options.depth || 25;
+    const movetime = options.movetime || 2500;
     this.maxDepth = depth;
     this.currentFen = fen;
     this.currentOptions = options;
@@ -98,7 +102,7 @@ export class StockfishClient {
     if (!this.worker || !this.isReady) {
       const initialized = await this.init();
       if (!initialized || !this.worker) {
-        return this.getFallbackEvaluation(fen, options.lastMove);
+        return this.getFallbackEvaluation(fen, options.lastMove, depth);
       }
     }
 
@@ -183,16 +187,17 @@ export class StockfishClient {
   private getFallbackEvaluation(
     fen: string,
     lastMove?: { from: string; to: string },
+    depth = 25,
   ): EngineAnalysisResult {
     const mockLines: EnginePVLine[] = [
       {
         multipv: 1,
-        depth: 12,
-        seldepth: 15,
+        depth: depth,
+        seldepth: depth + 3,
         score: { type: "cp", value: 35, scoreCp: 35, mateMoves: null },
-        nodes: 50000,
-        nps: 200000,
-        timeMs: 250,
+        nodes: 1500000,
+        nps: 600000,
+        timeMs: 400,
         pv: ["e2e4", "e7e5", "g1f3"],
         sanPv: ["e4", "e5", "Nf3"],
         bestMove: "e2e4",
@@ -200,12 +205,12 @@ export class StockfishClient {
       },
       {
         multipv: 2,
-        depth: 12,
-        seldepth: 15,
+        depth: depth,
+        seldepth: depth + 3,
         score: { type: "cp", value: 20, scoreCp: 20, mateMoves: null },
-        nodes: 45000,
-        nps: 180000,
-        timeMs: 250,
+        nodes: 1200000,
+        nps: 550000,
+        timeMs: 400,
         pv: ["d2d4", "d7d5", "c2c4"],
         sanPv: ["d4", "d5", "c4"],
         bestMove: "d2d4",
@@ -213,12 +218,12 @@ export class StockfishClient {
       },
       {
         multipv: 3,
-        depth: 12,
-        seldepth: 15,
+        depth: depth,
+        seldepth: depth + 3,
         score: { type: "cp", value: 15, scoreCp: 15, mateMoves: null },
-        nodes: 40000,
-        nps: 160000,
-        timeMs: 250,
+        nodes: 1000000,
+        nps: 500000,
+        timeMs: 400,
         pv: ["g1f3", "d7d5", "g2g3"],
         sanPv: ["Nf3", "d5", "g3"],
         bestMove: "g1f3",

@@ -43,6 +43,100 @@ export interface UserProgressTelemetry {
   lastUpdated: string;
 }
 
+export const TACTICAL_MOTIFS = [
+  "Fork / Double Attack",
+  "Pin",
+  "Skewer",
+  "Discovered Attack",
+  "Deflection",
+  "Decoy / Attraction",
+  "Overloaded Piece",
+  "Intermezzo (Zwischenzug / In-Between Move)",
+  "Removal of the Defender",
+  "X-Ray Attack",
+  "Trapped Piece",
+  "Clearance Sacrifice",
+  "Interference",
+  "Windmill",
+  "Advanced Pawn / Breakthrough",
+  "Desperado",
+] as const;
+
+export type TacticalMotif = (typeof TACTICAL_MOTIFS)[number];
+
+export type TacticalTierLevel = 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8 | 9;
+
+export type TacticalTierName =
+  | "Novice Observer"
+  | "Tactical Apprentice"
+  | "Pattern Scout"
+  | "Combinant"
+  | "Board Visionary"
+  | "Calculation Specialist"
+  | "Tactical Strategist"
+  | "Master Tactician"
+  | "Grandmaster Virtuoso";
+
+export interface TacticalTierDef {
+  level: TacticalTierLevel;
+  name: TacticalTierName;
+  minRating: number;
+  maxRating: number;
+  minMoves: number;
+  maxMoves: number;
+  description: string;
+}
+
+export const TACTICAL_TIERS: Record<TacticalTierLevel, TacticalTierDef> = {
+  1: { level: 1, name: "Novice Observer", minRating: 0, maxRating: 999, minMoves: 1, maxMoves: 1, description: "1-move combination (< 1000)" },
+  2: { level: 2, name: "Tactical Apprentice", minRating: 1000, maxRating: 1299, minMoves: 1, maxMoves: 2, description: "1 to 2-move combination (1000–1299)" },
+  3: { level: 3, name: "Pattern Scout", minRating: 1300, maxRating: 1499, minMoves: 2, maxMoves: 2, description: "2-move combination (1300–1499)" },
+  4: { level: 4, name: "Combinant", minRating: 1500, maxRating: 1699, minMoves: 2, maxMoves: 3, description: "2 to 3-move combination (1500–1699)" },
+  5: { level: 5, name: "Board Visionary", minRating: 1700, maxRating: 1899, minMoves: 3, maxMoves: 3, description: "3-move combination (1700–1899)" },
+  6: { level: 6, name: "Calculation Specialist", minRating: 1900, maxRating: 2099, minMoves: 3, maxMoves: 4, description: "3 to 4-move combination (1900–2099)" },
+  7: { level: 7, name: "Tactical Strategist", minRating: 2100, maxRating: 2299, minMoves: 4, maxMoves: 4, description: "4-move combination (2100–2299)" },
+  8: { level: 8, name: "Master Tactician", minRating: 2300, maxRating: 2499, minMoves: 4, maxMoves: 5, description: "4+ move combination (2300–2499)" },
+  9: { level: 9, name: "Grandmaster Virtuoso", minRating: 2500, maxRating: 9999, minMoves: 5, maxMoves: 99, description: "Deep complex variations (2500+)" },
+};
+
+export interface TacticsPuzzleItem {
+  id: string;
+  fen: string;
+  initialTurn: "white" | "black";
+  solutionPv: string[];
+  solutionLanPv: string[];
+  primaryMotif: TacticalMotif;
+  secondaryMotifs: TacticalMotif[];
+  tierLevel: TacticalTierLevel;
+  tierName: TacticalTierName;
+  rating: number;
+  moveLength: number;
+  sourceGameId?: string;
+  players?: string;
+  openingVariationId?: string;
+  openingName?: string;
+  explanation: string;
+  isCheckmate: false; // STRICT: checkmates excluded!
+}
+
+export interface MotifUserProgress {
+  motif: TacticalMotif;
+  rating: number; // baseline 1200
+  attempts: number;
+  solved: number;
+  currentStreak: number; // 0 to 20
+  remedialQueue: string[]; // puzzle IDs
+  clearedLevels: TacticalTierLevel[];
+}
+
+export interface TacticsGlobalProgress {
+  activeGlobalTier: TacticalTierLevel;
+  overallRating: number | null; // null if calibrating
+  isCalibrated: boolean;
+  motifProgress: Record<TacticalMotif, MotifUserProgress>;
+  lastSyncTimestamp: string;
+}
+
 export interface SavedVariation {
   id: string;
   name: string;
@@ -57,14 +151,20 @@ export interface SavedVariation {
   gameCount: number;
   games: ScrapedGame[];
   endgames: PracticalEndgameTarget[];
+  tacticsCount?: number;
 }
 
 const DB_NAME = "chess_buddy_storage";
-const DB_VERSION = 1;
+const DB_VERSION = 2;
 const STORE_NAME = "variations";
+const TACTICS_STORE_NAME = "tactics_puzzles";
+const TACTICS_PROGRESS_STORE_NAME = "tactics_user_progress";
+
 const LS_BACKUP_KEY = "chess_buddy_saved_variations_meta";
 const TOKEN_KEY = "chess_buddy_lichess_token";
 const TELEMETRY_KEY = "chess_buddy_user_telemetry";
+const TACTICS_LS_KEY = "chess_buddy_tactics_puzzles";
+const TACTICS_PROGRESS_LS_KEY = "chess_buddy_tactics_progress";
 
 export function getUserTelemetry(): UserProgressTelemetry {
   const defaultTelemetry: UserProgressTelemetry = {
@@ -130,6 +230,15 @@ function getDb(): Promise<IDBDatabase> {
         if (!db.objectStoreNames.contains(STORE_NAME)) {
           db.createObjectStore(STORE_NAME, { keyPath: "id" });
         }
+        if (!db.objectStoreNames.contains(TACTICS_STORE_NAME)) {
+          const tStore = db.createObjectStore(TACTICS_STORE_NAME, { keyPath: "id" });
+          tStore.createIndex("primaryMotif", "primaryMotif", { unique: false });
+          tStore.createIndex("tierLevel", "tierLevel", { unique: false });
+          tStore.createIndex("openingVariationId", "openingVariationId", { unique: false });
+        }
+        if (!db.objectStoreNames.contains(TACTICS_PROGRESS_STORE_NAME)) {
+          db.createObjectStore(TACTICS_PROGRESS_STORE_NAME, { keyPath: "id" });
+        }
       };
 
       request.onsuccess = () => resolve(request.result);
@@ -138,6 +247,276 @@ function getDb(): Promise<IDBDatabase> {
   }
 
   return dbPromise;
+}
+
+export function getDefaultTacticsProgress(): TacticsGlobalProgress {
+  const motifProgress: Record<TacticalMotif, MotifUserProgress> = {} as any;
+  for (const m of TACTICAL_MOTIFS) {
+    motifProgress[m] = {
+      motif: m,
+      rating: 1200,
+      attempts: 0,
+      solved: 0,
+      currentStreak: 0,
+      remedialQueue: [],
+      clearedLevels: [],
+    };
+  }
+
+  return {
+    activeGlobalTier: 1,
+    overallRating: null,
+    isCalibrated: false,
+    motifProgress,
+    lastSyncTimestamp: new Date(0).toISOString(),
+  };
+}
+
+export async function getTacticsProgress(): Promise<TacticsGlobalProgress> {
+  const fallback = getDefaultTacticsProgress();
+
+  if (typeof window === "undefined") {
+    return fallback;
+  }
+
+  try {
+    const db = await getDb();
+    const result = await new Promise<TacticsGlobalProgress | null>((resolve) => {
+      const tx = db.transaction(TACTICS_PROGRESS_STORE_NAME, "readonly");
+      const store = tx.objectStore(TACTICS_PROGRESS_STORE_NAME);
+      const req = store.get("global_progress");
+      req.onsuccess = () => resolve(req.result || null);
+      req.onerror = () => resolve(null);
+    });
+
+    if (result) {
+      return sanitizeTacticsProgress(result);
+    }
+  } catch {
+    // IndexedDB fallback to localStorage
+  }
+
+  if (window.localStorage) {
+    try {
+      const raw = window.localStorage.getItem(TACTICS_PROGRESS_LS_KEY);
+      if (raw) {
+        return sanitizeTacticsProgress(JSON.parse(raw));
+      }
+    } catch {
+      // ignore
+    }
+  }
+
+  return fallback;
+}
+
+function sanitizeTacticsProgress(raw: any): TacticsGlobalProgress {
+  const base = getDefaultTacticsProgress();
+  if (!raw || typeof raw !== "object") return base;
+
+  const mergedMotifs: Record<TacticalMotif, MotifUserProgress> = {} as any;
+  let exploredCount = 0;
+  let ratingSum = 0;
+
+  for (const m of TACTICAL_MOTIFS) {
+    const existing = raw.motifProgress?.[m];
+    const item: MotifUserProgress = {
+      motif: m,
+      rating: existing?.rating || 1200,
+      attempts: existing?.attempts || 0,
+      solved: existing?.solved || 0,
+      currentStreak: existing?.currentStreak || 0,
+      remedialQueue: Array.isArray(existing?.remedialQueue) ? existing.remedialQueue : [],
+      clearedLevels: Array.isArray(existing?.clearedLevels) ? existing.clearedLevels : [],
+    };
+    mergedMotifs[m] = item;
+
+    if (item.attempts > 0) {
+      exploredCount++;
+      ratingSum += item.rating;
+    }
+  }
+
+  // Calibration lock: Calibrated when user has attempted at least 8 distinct motifs or all populated motifs
+  const isCalibrated = exploredCount >= 6;
+  const overallRating = isCalibrated ? Math.round(ratingSum / exploredCount) : null;
+
+  return {
+    activeGlobalTier: raw.activeGlobalTier || 1,
+    overallRating,
+    isCalibrated,
+    motifProgress: mergedMotifs,
+    lastSyncTimestamp: raw.lastSyncTimestamp || new Date(0).toISOString(),
+  };
+}
+
+export async function saveTacticsProgress(progress: TacticsGlobalProgress): Promise<void> {
+  const sanitized = sanitizeTacticsProgress(progress);
+
+  try {
+    const db = await getDb();
+    await new Promise<void>((resolve, reject) => {
+      const tx = db.transaction(TACTICS_PROGRESS_STORE_NAME, "readwrite");
+      const store = tx.objectStore(TACTICS_PROGRESS_STORE_NAME);
+      const req = store.put({ id: "global_progress", ...sanitized });
+      req.onsuccess = () => resolve();
+      req.onerror = () => reject(req.error);
+    });
+  } catch {
+    // ignore
+  }
+
+  if (typeof window !== "undefined" && window.localStorage) {
+    try {
+      window.localStorage.setItem(TACTICS_PROGRESS_LS_KEY, JSON.stringify(sanitized));
+    } catch {
+      // ignore
+    }
+  }
+}
+
+export async function recordTacticsAttempt(
+  motif: TacticalMotif,
+  puzzleId: string,
+  isCorrect: boolean,
+): Promise<TacticsGlobalProgress> {
+  const progress = await getTacticsProgress();
+  const m = progress.motifProgress[motif];
+  if (!m) return progress;
+
+  m.attempts++;
+
+  if (isCorrect) {
+    m.solved++;
+    m.rating = Math.min(2800, m.rating + 16);
+    m.currentStreak++;
+
+    // If 20 in a row achieved and remedial queue is clear, clear active level
+    if (m.currentStreak >= 20 && m.remedialQueue.length === 0) {
+      if (!m.clearedLevels.includes(progress.activeGlobalTier)) {
+        m.clearedLevels.push(progress.activeGlobalTier);
+      }
+    }
+  } else {
+    // STRICT RESET TO 0 ON ERROR
+    m.currentStreak = 0;
+    m.rating = Math.max(800, m.rating - 16);
+    if (!m.remedialQueue.includes(puzzleId)) {
+      m.remedialQueue.push(puzzleId);
+    }
+  }
+
+  await saveTacticsProgress(progress);
+  return progress;
+}
+
+export async function clearRemedialItem(
+  motif: TacticalMotif,
+  puzzleId: string,
+): Promise<TacticsGlobalProgress> {
+  const progress = await getTacticsProgress();
+  const m = progress.motifProgress[motif];
+  if (!m) return progress;
+
+  m.remedialQueue = m.remedialQueue.filter((id) => id !== puzzleId);
+  await saveTacticsProgress(progress);
+  return progress;
+}
+
+export async function saveTacticsPuzzles(puzzles: TacticsPuzzleItem[]): Promise<void> {
+  if (!puzzles || puzzles.length === 0) return;
+
+  try {
+    const db = await getDb();
+    await new Promise<void>((resolve, reject) => {
+      const tx = db.transaction(TACTICS_STORE_NAME, "readwrite");
+      const store = tx.objectStore(TACTICS_STORE_NAME);
+      for (const p of puzzles) {
+        // Enforce strict checkmate exclusion
+        if (!p.isCheckmate) {
+          store.put(p);
+        }
+      }
+      tx.oncomplete = () => resolve();
+      tx.onerror = () => reject(tx.error);
+    });
+  } catch {
+    // fallback to localStorage
+  }
+
+  if (typeof window !== "undefined" && window.localStorage) {
+    try {
+      const existingRaw = window.localStorage.getItem(TACTICS_LS_KEY);
+      const existing: TacticsPuzzleItem[] = existingRaw ? JSON.parse(existingRaw) : [];
+      const map = new Map<string, TacticsPuzzleItem>();
+      for (const p of existing) map.set(p.id, p);
+      for (const p of puzzles) {
+        if (!p.isCheckmate) map.set(p.id, p);
+      }
+      window.localStorage.setItem(TACTICS_LS_KEY, JSON.stringify(Array.from(map.values())));
+    } catch {
+      // ignore
+    }
+  }
+}
+
+export async function getTacticsPuzzles(options?: {
+  motif?: TacticalMotif;
+  tier?: TacticalTierLevel;
+  variationId?: string;
+}): Promise<TacticsPuzzleItem[]> {
+  try {
+    const db = await getDb();
+    return new Promise((resolve) => {
+      const tx = db.transaction(TACTICS_STORE_NAME, "readonly");
+      const store = tx.objectStore(TACTICS_STORE_NAME);
+      const req = store.getAll();
+
+      req.onsuccess = () => {
+        let results = (req.result as TacticsPuzzleItem[]) || [];
+        if (options?.motif) {
+          results = results.filter(
+            (p) => p.primaryMotif === options.motif || p.secondaryMotifs.includes(options.motif!),
+          );
+        }
+        if (options?.tier) {
+          results = results.filter((p) => p.tierLevel === options.tier);
+        }
+        if (options?.variationId) {
+          results = results.filter((p) => p.openingVariationId === options.variationId);
+        }
+        resolve(results);
+      };
+      req.onerror = () => resolve([]);
+    });
+  } catch {
+    // fallback
+  }
+
+  if (typeof window !== "undefined" && window.localStorage) {
+    try {
+      const raw = window.localStorage.getItem(TACTICS_LS_KEY);
+      if (raw) {
+        let results: TacticsPuzzleItem[] = JSON.parse(raw);
+        if (options?.motif) {
+          results = results.filter(
+            (p) => p.primaryMotif === options.motif || p.secondaryMotifs.includes(options.motif!),
+          );
+        }
+        if (options?.tier) {
+          results = results.filter((p) => p.tierLevel === options.tier);
+        }
+        if (options?.variationId) {
+          results = results.filter((p) => p.openingVariationId === options.variationId);
+        }
+        return results;
+      }
+    } catch {
+      // ignore
+    }
+  }
+
+  return [];
 }
 
 /**
@@ -228,6 +607,24 @@ export async function deleteVariationRecord(id: string): Promise<void> {
     // Ignore IndexedDB error, proceed to localStorage cleanup
   }
 
+  // Cascading purge of tactics belonging to this variation
+  try {
+    const db = await getDb();
+    const tx = db.transaction(TACTICS_STORE_NAME, "readwrite");
+    const store = tx.objectStore(TACTICS_STORE_NAME);
+    const req = store.getAll();
+    req.onsuccess = () => {
+      const items = (req.result as TacticsPuzzleItem[]) || [];
+      for (const item of items) {
+        if (item.openingVariationId === id) {
+          store.delete(item.id);
+        }
+      }
+    };
+  } catch {
+    // ignore
+  }
+
   if (typeof window !== "undefined" && window.localStorage) {
     try {
       const raw = window.localStorage.getItem(LS_BACKUP_KEY);
@@ -240,6 +637,17 @@ export async function deleteVariationRecord(id: string): Promise<void> {
       }
     } catch {
       // Ignore
+    }
+
+    try {
+      const rawT = window.localStorage.getItem(TACTICS_LS_KEY);
+      if (rawT) {
+        const list: TacticsPuzzleItem[] = JSON.parse(rawT);
+        const filtered = list.filter((p) => p.openingVariationId !== id);
+        window.localStorage.setItem(TACTICS_LS_KEY, JSON.stringify(filtered));
+      }
+    } catch {
+      // ignore
     }
   }
 }
