@@ -8,6 +8,7 @@ import {
 } from "../services/repertoireStorage";
 import { analyzeTacticalMotifs } from "./tacticsMotifEngine";
 import { classifyTacticalTier } from "./tacticsTierMatrix";
+import { PREPOPULATED_PIRC_TACTICS } from "./prepopulatedTactics";
 
 /**
  * Resolves a repertoire variation name to a standard Lichess opening angle tag.
@@ -513,6 +514,27 @@ export function generateOpeningTacticsPool(
   const baseId = variation?.id || "rep";
   const motifSlug = motif.replace(/[^a-zA-Z0-9]/g, "").slice(0, 5).toLowerCase();
 
+  // 1. First, draw verified puzzles from the master catalog for this motif and level
+  const catalogMatches = PREPOPULATED_PIRC_TACTICS.filter(
+    (p) =>
+      p.primaryMotif === motif &&
+      p.tierLevel === targetLevel &&
+      p.initialTurn === perspective &&
+      !existingIds.has(p.id),
+  );
+
+  for (const p of catalogMatches) {
+    if (items.length >= countNeeded) break;
+    items.push({
+      ...p,
+      openingVariationId: variation?.id || p.openingVariationId,
+      openingName: variation?.name || p.openingName,
+    });
+    existingIds.add(p.id);
+  }
+
+  if (items.length >= countNeeded) return items;
+
   // Precompute base opening position once for instant instantiation
   let baseFen: string;
   if (variation?.finalFen) {
@@ -617,6 +639,14 @@ export function generateOpeningTacticsPool(
         sanMoves.length = 1;
         lanMoves.length = 1;
       }
+
+      // Strictly verify motif and net material gain (>= 2 pawns)
+      const motifAnalysis = analyzeTacticalMotifs(fenBefore, sanMoves, motif);
+      if (!motifAnalysis || motifAnalysis.primaryMotif !== motif || motifAnalysis.isCheckmate) continue;
+
+      const matBefore = getMaterialScore(fenBefore, perspective);
+      const matAfter = getMaterialScore(solChess.fen(), perspective);
+      if (matAfter - matBefore < 2) continue;
 
       const rating = 850 + (targetLevel - 1) * 200 + (i % 25) * 4;
       const { tierName } = classifyTacticalTier(rating, sanMoves.length);
