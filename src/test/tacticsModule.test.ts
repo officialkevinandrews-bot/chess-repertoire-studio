@@ -22,6 +22,7 @@ import {
 import {
   SEED_TACTICS_PUZZLES,
   MOTIF_TO_LICHESS_THEME,
+  extractTacticsFromGame,
 } from "../utils/tacticsScraper";
 
 describe("Component #1: 16-Tactical-Motif Dictionary & Primary/Secondary Engine", () => {
@@ -211,7 +212,26 @@ describe("Component #1: Global Tier Progression & Adaptive Empty-Level Bypassing
 
   it("calculates Calibration Lock until user completes sufficient motif attempts", () => {
     const progress = getDefaultTacticsProgress();
-    const summary = evaluateGlobalTierProgress(progress, SEED_TACTICS_PUZZLES);
+    const fixturePuzzles: TacticsPuzzleItem[] = [
+      {
+        id: "fix-1",
+        fen: "r3k3/pp1ppppp/8/3N4/8/8/PPP2PPP/5RK1 w q - 0 1",
+        initialTurn: "white",
+        solutionPv: ["Nc7+", "Kd8", "Nxa8"],
+        solutionLanPv: ["d5c7", "e8d8", "c7a8"],
+        primaryMotif: "Fork / Double Attack",
+        secondaryMotifs: [],
+        tierLevel: 1,
+        tierName: "Novice Observer",
+        rating: 900,
+        moveLength: 2,
+        players: "A vs B",
+        explanation: "Test",
+        isCheckmate: false,
+      },
+    ];
+
+    const summary = evaluateGlobalTierProgress(progress, fixturePuzzles);
 
     expect(summary.isCalibrated).toBe(false);
     expect(summary.overallRatingDisplay).toBe("Calibrating...");
@@ -222,7 +242,7 @@ describe("Component #1: Global Tier Progression & Adaptive Empty-Level Bypassing
       progress.motifProgress[m].rating = 1350;
     }
 
-    const summaryAfter = evaluateGlobalTierProgress(progress, SEED_TACTICS_PUZZLES);
+    const summaryAfter = evaluateGlobalTierProgress(progress, fixturePuzzles);
     expect(summaryAfter.isCalibrated).toBe(true);
     expect(summaryAfter.overallRatingDisplay).not.toBe("Calibrating...");
   });
@@ -252,32 +272,40 @@ describe("Component #1: Strict Streak Reset (to 0) & Remedial Queue Mechanics", 
   });
 });
 
-describe("Component #1: Soundness, Completeness, and Lichess Thematic Mapping", () => {
-  it("verifies 100% of seed puzzles have legal moves and zero forced checkmates", () => {
-    expect(SEED_TACTICS_PUZZLES.length).toBeGreaterThanOrEqual(16);
-
-    for (const p of SEED_TACTICS_PUZZLES) {
-      const chess = new Chess(p.fen);
-      expect(chess.fen()).toBeDefined();
-
-      for (const m of p.solutionPv) {
-        const moveRes = chess.move(m);
-        expect(moveRes, `Illegal move ${m} in puzzle ${p.id} (${p.primaryMotif})`).not.toBeNull();
-      }
-
-      expect(chess.isCheckmate(), `Puzzle ${p.id} must not be checkmate`).toBe(false);
-      expect(p.isCheckmate).toBe(false);
-    }
+describe("Component #1: Soundness, Completeness, and Perspective Enforcement", () => {
+  it("strictly removes placeholder seed tactics from initial repository pool", () => {
+    // Verified: No hardcoded seed puzzles remain. Pool is populated purely dynamically.
+    expect(SEED_TACTICS_PUZZLES.length).toBe(0);
   });
 
-  it("ensures Level 1 puzzles are strictly Novice Observer with 1-2 moves", () => {
-    const level1 = SEED_TACTICS_PUZZLES.filter((p) => p.tierLevel === 1);
-    expect(level1.length).toBeGreaterThanOrEqual(5);
+  it("strictly filters tactical strikes by perspective (Black vs White)", () => {
+    // Sample game moves with an early tactical breakthrough
+    const gameMoves = [
+      "e4", "e5",
+      "Nf3", "Nc6",
+      "Bc4", "Nf6",
+      "d4", "exd4",
+      "O-O", "Nxe4",
+      "Re1", "d5",
+      "Bxd5", "Qxd5",
+      "Nc3", "Qa5",
+      "Nxe4", "Be6"
+    ];
 
-    for (const p of level1) {
-      expect(p.tierName).toBe("Novice Observer");
-      expect(p.rating).toBeLessThan(1200);
-      expect(p.moveLength).toBeLessThanOrEqual(2);
+    // When scraping for Black's perspective:
+    const blackTactics = extractTacticsFromGame("game-1", "W vs B", gameMoves, "var-b", "Open Sicilian", "black");
+    for (const t of blackTactics) {
+      expect(t.initialTurn).toBe("black");
+      expect(t.fen).toContain(" b ");
+      expect(t.isCheckmate).toBe(false);
+    }
+
+    // When scraping for White's perspective:
+    const whiteTactics = extractTacticsFromGame("game-2", "W vs B", gameMoves, "var-w", "Italian Game", "white");
+    for (const t of whiteTactics) {
+      expect(t.initialTurn).toBe("white");
+      expect(t.fen).toContain(" w ");
+      expect(t.isCheckmate).toBe(false);
     }
   });
 

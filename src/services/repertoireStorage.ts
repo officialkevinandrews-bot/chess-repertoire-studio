@@ -155,7 +155,7 @@ export interface SavedVariation {
 }
 
 const DB_NAME = "chess_buddy_storage";
-const DB_VERSION = 2;
+const DB_VERSION = 3;
 const STORE_NAME = "variations";
 const TACTICS_STORE_NAME = "tactics_puzzles";
 const TACTICS_PROGRESS_STORE_NAME = "tactics_user_progress";
@@ -426,16 +426,17 @@ export async function clearRemedialItem(
 export async function saveTacticsPuzzles(puzzles: TacticsPuzzleItem[]): Promise<void> {
   if (!puzzles || puzzles.length === 0) return;
 
+  // Filter out placeholders and forced checkmates
+  const validPuzzles = puzzles.filter((p) => !p.id.startsWith("seed-") && !p.isCheckmate);
+  if (validPuzzles.length === 0) return;
+
   try {
     const db = await getDb();
     await new Promise<void>((resolve, reject) => {
       const tx = db.transaction(TACTICS_STORE_NAME, "readwrite");
       const store = tx.objectStore(TACTICS_STORE_NAME);
-      for (const p of puzzles) {
-        // Enforce strict checkmate exclusion
-        if (!p.isCheckmate) {
-          store.put(p);
-        }
+      for (const p of validPuzzles) {
+        store.put(p);
       }
       tx.oncomplete = () => resolve();
       tx.onerror = () => reject(tx.error);
@@ -449,9 +450,11 @@ export async function saveTacticsPuzzles(puzzles: TacticsPuzzleItem[]): Promise<
       const existingRaw = window.localStorage.getItem(TACTICS_LS_KEY);
       const existing: TacticsPuzzleItem[] = existingRaw ? JSON.parse(existingRaw) : [];
       const map = new Map<string, TacticsPuzzleItem>();
-      for (const p of existing) map.set(p.id, p);
-      for (const p of puzzles) {
-        if (!p.isCheckmate) map.set(p.id, p);
+      for (const p of existing) {
+        if (!p.id.startsWith("seed-") && !p.isCheckmate) map.set(p.id, p);
+      }
+      for (const p of validPuzzles) {
+        map.set(p.id, p);
       }
       window.localStorage.setItem(TACTICS_LS_KEY, JSON.stringify(Array.from(map.values())));
     } catch {
@@ -464,6 +467,7 @@ export async function getTacticsPuzzles(options?: {
   motif?: TacticalMotif;
   tier?: TacticalTierLevel;
   variationId?: string;
+  turn?: "white" | "black";
 }): Promise<TacticsPuzzleItem[]> {
   try {
     const db = await getDb();
@@ -474,6 +478,30 @@ export async function getTacticsPuzzles(options?: {
 
       req.onsuccess = () => {
         let results = (req.result as TacticsPuzzleItem[]) || [];
+
+        // Fallback or merge with localStorage
+        if (typeof window !== "undefined" && window.localStorage) {
+          try {
+            const raw = window.localStorage.getItem(TACTICS_LS_KEY);
+            if (raw) {
+              const lsItems: TacticsPuzzleItem[] = JSON.parse(raw);
+              if (results.length === 0) {
+                results = lsItems;
+              } else {
+                const map = new Map<string, TacticsPuzzleItem>();
+                for (const p of results) map.set(p.id, p);
+                for (const p of lsItems) if (!map.has(p.id)) map.set(p.id, p);
+                results = Array.from(map.values());
+              }
+            }
+          } catch {
+            // ignore
+          }
+        }
+
+        // Strictly eliminate seed placeholders and checkmates
+        results = results.filter((p) => !p.id.startsWith("seed-") && !p.isCheckmate);
+
         if (options?.motif) {
           results = results.filter(
             (p) => p.primaryMotif === options.motif || p.secondaryMotifs.includes(options.motif!),
@@ -484,6 +512,9 @@ export async function getTacticsPuzzles(options?: {
         }
         if (options?.variationId) {
           results = results.filter((p) => p.openingVariationId === options.variationId);
+        }
+        if (options?.turn) {
+          results = results.filter((p) => p.initialTurn === options.turn);
         }
         resolve(results);
       };
@@ -498,6 +529,7 @@ export async function getTacticsPuzzles(options?: {
       const raw = window.localStorage.getItem(TACTICS_LS_KEY);
       if (raw) {
         let results: TacticsPuzzleItem[] = JSON.parse(raw);
+        results = results.filter((p) => !p.id.startsWith("seed-") && !p.isCheckmate);
         if (options?.motif) {
           results = results.filter(
             (p) => p.primaryMotif === options.motif || p.secondaryMotifs.includes(options.motif!),
@@ -509,6 +541,9 @@ export async function getTacticsPuzzles(options?: {
         if (options?.variationId) {
           results = results.filter((p) => p.openingVariationId === options.variationId);
         }
+        if (options?.turn) {
+          results = results.filter((p) => p.initialTurn === options.turn);
+        }
         return results;
       }
     } catch {
@@ -517,6 +552,24 @@ export async function getTacticsPuzzles(options?: {
   }
 
   return [];
+}
+
+export async function clearAllTacticsPuzzles(): Promise<void> {
+  if (typeof window !== "undefined" && window.localStorage) {
+    try {
+      window.localStorage.removeItem(TACTICS_LS_KEY);
+    } catch {
+      // ignore
+    }
+  }
+
+  try {
+    const db = await getDb();
+    const tx = db.transaction(TACTICS_STORE_NAME, "readwrite");
+    tx.objectStore(TACTICS_STORE_NAME).clear();
+  } catch {
+    // ignore
+  }
 }
 
 /**
