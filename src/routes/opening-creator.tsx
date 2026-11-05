@@ -45,6 +45,7 @@ function OpeningCreator() {
     undo,
     reset,
     flip,
+    setOrientation,
     saveVariation,
     deleteVariation,
     savedVariations,
@@ -54,6 +55,7 @@ function OpeningCreator() {
     explanation,
   } = useChessTraining();
 
+  const [perspective, setPerspective] = useState<"white" | "black">(orientation);
   const [name, setName] = useState("");
   const [exported, setExported] = useState<string | null>(null);
   const [isScraping, setIsScraping] = useState(false);
@@ -79,17 +81,17 @@ function OpeningCreator() {
 
     try {
       const finalName = name.trim() || `${recognized.name} (${history.length} moves)`;
-      const v = await saveVariation(finalName);
+      const v = await saveVariation(finalName, perspective);
       setExported(v.finalFen);
 
       toast.info("Variation saved!", {
-        description: "Pulling actual games played from Lichess database...",
+        description: `Pulling actual ${perspective} victory games played from Lichess database...`,
       });
 
-      // Run live Lichess scraper pipeline with persistent token
+      // Run live Lichess scraper pipeline with persistent token and perspective prioritization
       const scrapeResult = await scrapeGamesForVariation(v.finalFen, v.moves, {
         targetGameCount: 50,
-        userColor: orientation,
+        userColor: perspective,
         onProgress: (p) => setScraperStatus(p),
       });
 
@@ -164,6 +166,43 @@ function OpeningCreator() {
           <Button variant="secondary" onClick={flip}>
             <FlipVertical2 /> Flip
           </Button>
+        </div>
+
+        <div className="flex items-center justify-between rounded-lg border border-border bg-card p-3">
+          <div className="space-y-0.5">
+            <span className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+              Repertoire Perspective
+            </span>
+            <p className="text-[11px] text-muted-foreground">
+              Configure which color you are building this line for
+            </p>
+          </div>
+          <div className="flex items-center gap-1 rounded-md border border-border bg-secondary/60 p-1">
+            <Button
+              type="button"
+              size="sm"
+              variant={perspective === "white" ? "default" : "ghost"}
+              className="h-7 text-xs font-semibold px-3"
+              onClick={() => {
+                setPerspective("white");
+                setOrientation("white");
+              }}
+            >
+              ⚪ White
+            </Button>
+            <Button
+              type="button"
+              size="sm"
+              variant={perspective === "black" ? "default" : "ghost"}
+              className="h-7 text-xs font-semibold px-3"
+              onClick={() => {
+                setPerspective("black");
+                setOrientation("black");
+              }}
+            >
+              ⚫ Black
+            </Button>
+          </div>
         </div>
 
         <div className="space-y-2">

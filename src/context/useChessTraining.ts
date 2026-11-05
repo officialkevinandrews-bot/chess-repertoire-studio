@@ -61,9 +61,13 @@ interface ChessTrainingContextValue {
   undo: () => void;
   reset: (fen?: string) => void;
   flip: () => void;
+  setOrientation: (o: Orientation) => void;
   loadFen: (fen: string) => void;
   getPgn: () => string;
-  saveVariation: (name?: string) => Promise<SavedVariation>;
+  saveVariation: (
+    name?: string,
+    perspectiveOverride?: "white" | "black",
+  ) => Promise<SavedVariation>;
   deleteVariation: (id: string) => Promise<void>;
   updateVariationGames: (
     id: string,
@@ -217,10 +221,11 @@ export function ChessTrainingProvider({ children }: { children: ReactNode }) {
   const getPgn = useCallback(() => gameRef.current.pgn(), []);
 
   const saveVariation = useCallback(
-    async (customName?: string) => {
+    async (customName?: string, perspectiveOverride?: "white" | "black") => {
       const historyMoves = gameRef.current.history();
       const opening = identifyOpening(historyMoves);
       const finalName = customName?.trim() || `${opening.name} (${historyMoves.length} moves)`;
+      const chosenPerspective = perspectiveOverride || orientation;
 
       const v: SavedVariation = {
         id: crypto.randomUUID(),
@@ -230,7 +235,8 @@ export function ChessTrainingProvider({ children }: { children: ReactNode }) {
         pgn: gameRef.current.pgn(),
         finalFen: gameRef.current.fen(),
         moves: historyMoves,
-        color: orientation,
+        color: chosenPerspective,
+        perspective: chosenPerspective,
         createdAt: new Date().toISOString(),
         gameCount: 0,
         games: [],
@@ -306,6 +312,7 @@ export function ChessTrainingProvider({ children }: { children: ReactNode }) {
       undo,
       reset,
       flip,
+      setOrientation,
       loadFen,
       getPgn,
       saveVariation,
@@ -329,6 +336,7 @@ export function ChessTrainingProvider({ children }: { children: ReactNode }) {
       undo,
       reset,
       flip,
+      setOrientation,
       loadFen,
       getPgn,
       saveVariation,

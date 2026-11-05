@@ -40,6 +40,7 @@ export interface SavedVariation {
   moves: string[];
   pgn: string;
   color: "white" | "black";
+  perspective?: "white" | "black";
   createdAt: string;
   gameCount: number;
   games: ScrapedGame[];

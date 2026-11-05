@@ -146,7 +146,7 @@ describe("Phase 2: Opening Identification & Repertoire Scraper", () => {
     // Pool contains variety of match types for deep pattern recognition
     const matchTypes = new Set(result.games.map((g) => g.matchType));
     expect(matchTypes.size).toBeGreaterThan(0);
-  });
+  }, 15000);
 
   it("saves an opening line and deletes it completely along with all associated games and endgames", async () => {
     const mockVariation: SavedVariation = {

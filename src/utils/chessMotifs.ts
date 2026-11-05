@@ -435,6 +435,8 @@ export function analyzePositionMotifs(
   return Array.from(unique.values());
 }
 
+export const detectAllMotifs = analyzePositionMotifs;
+
 /* ---------------- Helper ray geometry ---------------- */
 
 function getRayDirections(type: PieceSymbol): [number, number][] {

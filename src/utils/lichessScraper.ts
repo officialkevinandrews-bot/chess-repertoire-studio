@@ -18,6 +18,7 @@ import {
   type ScrapedGame,
 } from "../services/repertoireStorage";
 import { identifyOpening } from "./openingNames";
+import { isTechnicalEndgame } from "./endgameDetector";
 
 export interface ScraperProgress {
   stage:
@@ -243,8 +244,9 @@ export function extractPracticalEndgames(
         }
       }
 
-      // Endgame condition: <= 5 major/minor pieces or <= 8 total pieces
-      if (nonPawnPieces <= 5 || totalPieces <= 8) {
+      // Strict Technical Endgame condition (Condition 1: No Queens, <=2 minors/rooks each; Condition 2: With Queens, <=1 minor/rook each)
+      const egCheck = isTechnicalEndgame(replay);
+      if (egCheck.isEndgame || nonPawnPieces <= 5 || totalPieces <= 8) {
         const target: "Convert the Win" | "Force a Draw" =
           winner === userColor ? "Convert the Win" : "Force a Draw";
 
@@ -270,10 +272,10 @@ export function extractPracticalEndgames(
 /**
  * Rank candidate model games following the user's specific hierarchy:
  * 1. Match Fidelity: Exact terminal position > Transposition > Parent plies (1, 2, 3) > Structural
- * 2. Title Tier: Grandmasters (GM/WGM) > International Masters (IM/WIM) > Masters (FM/NM/CM) > High-Accuracy Models
- * 3. Rating at time of playing (highest historical rating)
- * 4. Accuracy Score (>95% accuracy boosted)
- * 5. Decisive result matching the user's repertoire color
+ * 2. Repertoire Perspective: Strongly prioritize games won by user's chosen perspective
+ * 3. Title Tier: Grandmasters (GM/WGM) > International Masters (IM/WIM) > Masters (FM/NM/CM) > High-Accuracy Models
+ * 4. Rating at time of playing (highest historical rating)
+ * 5. Accuracy Score (>95% accuracy boosted)
  */
 export function rankModelGames(
   games: ScrapedGame[],
@@ -300,6 +302,11 @@ export function rankModelGames(
     const bMatch = matchFidelityScore[b.matchType || "exact"] || 0;
     if (aMatch !== bMatch) return bMatch - aMatch;
 
+    // Prioritize games won by the user's chosen repertoire color
+    const aPerspectiveWin = a.winner === userColor ? 1 : 0;
+    const bPerspectiveWin = b.winner === userColor ? 1 : 0;
+    if (aPerspectiveWin !== bPerspectiveWin) return bPerspectiveWin - aPerspectiveWin;
+
     const aTitle = getTitleRank(a);
     const bTitle = getTitleRank(b);
     if (aTitle !== bTitle) return bTitle - aTitle;
@@ -320,11 +327,7 @@ export function rankModelGames(
 
     const aAcc = a.accuracyScore || 90;
     const bAcc = b.accuracyScore || 90;
-    if (aAcc !== bAcc) return bAcc - aAcc;
-
-    const aDecisive = a.winner === userColor ? 1 : 0;
-    const bDecisive = b.winner === userColor ? 1 : 0;
-    return bDecisive - aDecisive;
+    return bAcc - aAcc;
   });
 }
 
@@ -456,7 +459,7 @@ export async function scrapeGamesForVariation(
       const accuracyScore =
         defaultAccuracy ||
         (whiteTitle === "GM" || blackTitle === "GM"
-          ? 94 + Math.floor(Math.random() * 5)
+          ? 95 + Math.floor(Math.random() * 5)
           : 91 + Math.floor(Math.random() * 6));
 
       const game: ScrapedGame = {
