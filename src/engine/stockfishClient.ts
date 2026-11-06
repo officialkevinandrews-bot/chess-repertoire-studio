@@ -106,7 +106,7 @@ export class StockfishClient {
     fen: string,
     options: EvaluationOptions = {},
   ): Promise<EngineAnalysisResult> {
-    const depth = options.depth || 25;
+    const depth = options.depth || 50;
     const multiPv = options.multiPv || 5;
     this.maxDepth = depth;
     this.currentFen = fen;
@@ -270,7 +270,7 @@ export class StockfishClient {
   private getFallbackEvaluation(
     fen: string,
     lastMove?: { from: string; to: string },
-    depth = 25,
+    depth = 50,
     multiPv = 5,
   ): EngineAnalysisResult {
     let lines: EnginePVLine[] = [];

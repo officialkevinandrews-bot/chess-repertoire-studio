@@ -244,10 +244,10 @@ export function EngineAnalysisPanel({
   };
 
   const modeButtons = [
-    { id: "super-gm", label: "Super-GM", icon: "👑", desc: "Depth 40-60+ (Cloud + Local)" },
-    { id: "grandmaster", label: "Grandmaster", icon: "🏆", desc: "Depth 25 (Local Engine)" },
+    { id: "super-gm", label: "Super-GM", icon: "👑", desc: "Depth 50 (Cloud + Deep Engine past 25)" },
+    { id: "grandmaster", label: "Grandmaster", icon: "🏆", desc: "Depth 35 (Deep Engine past 25)" },
     { id: "quick", label: "Quick", icon: "⚡", desc: "Depth 18 (Fast Check)" },
-    { id: "infinite", label: "Infinite", icon: "♾️", desc: "Continuous Deep Search" },
+    { id: "infinite", label: "Infinite", icon: "♾️", desc: "Continuous Deep Search (No depth limit)" },
   ] as const;
 
   return (
@@ -259,10 +259,10 @@ export function EngineAnalysisPanel({
             Engine Depth &amp; Mode
           </span>
           <span className="text-[11px] font-mono text-primary font-medium">
-            {engineMode === "super-gm" && "👑 Super-GM (Depth 40–60+ Default)"}
-            {engineMode === "grandmaster" && "🏆 Grandmaster (Depth 25)"}
+            {engineMode === "super-gm" && "👑 Super-GM (Depth 50 Default)"}
+            {engineMode === "grandmaster" && "🏆 Grandmaster (Depth 35)"}
             {engineMode === "quick" && "⚡ Quick Analysis (Depth 18)"}
-            {engineMode === "infinite" && "♾️ Infinite Continuous Search"}
+            {engineMode === "infinite" && "♾️ Infinite Continuous Search (Unlimited Depth)"}
           </span>
         </div>
 
@@ -359,9 +359,22 @@ export function EngineAnalysisPanel({
           )}
         </div>
 
-        <span className="font-mono text-xs font-bold text-foreground">
-          Eval: {analysis ? (analysis.evalWhite > 0 ? "+" : "") + analysis.evalWhite.toFixed(2) : "0.00"}
-        </span>
+        <div className="flex items-center gap-2">
+          <span className="font-mono text-xs font-bold text-foreground">
+            Eval: {analysis ? (analysis.evalWhite > 0 ? "+" : "") + analysis.evalWhite.toFixed(2) : "0.00"}
+          </span>
+
+          {engineMode !== "infinite" && onSelectMode && (
+            <button
+              type="button"
+              onClick={() => onSelectMode("infinite")}
+              title="Keep evaluating continuously past depth 25/50 with no depth limit"
+              className="text-[10px] font-semibold text-primary hover:text-primary/80 flex items-center gap-1 bg-primary/10 border border-primary/25 rounded px-2 py-0.5 transition-colors cursor-pointer"
+            >
+              ♾️ Keep Evaluating
+            </button>
+          )}
+        </div>
       </div>
 
       {!analysis ? (
