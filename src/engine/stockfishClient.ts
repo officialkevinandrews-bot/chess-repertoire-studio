@@ -21,13 +21,16 @@ export class StockfishClient {
   private currentLines: Map<number, EnginePVLine> = new Map();
   private maxDepth = 25;
   private workerPath: string;
+  private lastProgressEmit = 0;
+  private lastEmittedDepth = 0;
 
-  constructor(workerPath = "/stockfish.js") {
+  constructor(workerPath = "/stockfish-19.js") {
     this.workerPath = workerPath;
   }
 
   /**
    * Initializes the Stockfish Web Worker and configures Skill Level 20, MultiPV 5, and Depth 25+.
+   * Uses Stockfish 19 WebAssembly with SFNNv16 NNUE, falling back to legacy engine if needed.
    * Safe to call on the server (will cleanly no-op if Worker is not defined).
    */
   public async init(): Promise<boolean> {
@@ -49,11 +52,17 @@ export class StockfishClient {
         };
 
         this.worker.onerror = (err) => {
-          console.warn("[Stockfish] Worker error:", err);
+          console.warn("[Stockfish 19] Worker error, attempting legacy fallback:", err);
+          if (this.workerPath !== "/stockfish.js") {
+            this.workerPath = "/stockfish.js";
+            this.worker = null;
+            this.init().then(resolve);
+            return;
+          }
           resolve(false);
         };
 
-        // Initialize UCI with Grandmaster depth options (MultiPV 5, Hash 32MB, Skill 20)
+        // Initialize UCI with Stockfish 19 options (MultiPV 5, Hash 32MB, Skill 20)
         this.sendCommand("uci");
         this.sendCommand("setoption name MultiPV value 5");
         this.sendCommand("setoption name Hash value 32");
@@ -62,7 +71,7 @@ export class StockfishClient {
 
         const checkReady = (e: MessageEvent) => {
           const msg = String(e.data || "");
-          if (msg.includes("readyok")) {
+          if (msg.includes("readyok") || msg.includes("uciok")) {
             this.isReady = true;
             this.worker?.removeEventListener("message", checkReady);
             resolve(true);
@@ -77,9 +86,14 @@ export class StockfishClient {
             this.isReady = true;
             resolve(true);
           }
-        }, 1500);
+        }, 2000);
       } catch (err) {
         console.warn("[Stockfish] Failed to initialize worker:", err);
+        if (this.workerPath !== "/stockfish.js") {
+          this.workerPath = "/stockfish.js";
+          this.init().then(resolve);
+          return;
+        }
         resolve(false);
       }
     });
@@ -98,6 +112,8 @@ export class StockfishClient {
     this.currentFen = fen;
     this.currentOptions = options;
     this.currentLines.clear();
+    this.lastProgressEmit = 0;
+    this.lastEmittedDepth = 0;
 
     if (!this.worker || !this.isReady) {
       const initialized = await this.init();
@@ -142,6 +158,8 @@ export class StockfishClient {
     this.currentFen = fen;
     this.currentOptions = { ...options, depth: 99 };
     this.currentLines.clear();
+    this.lastProgressEmit = 0;
+    this.lastEmittedDepth = 0;
 
     if (!this.worker || !this.isReady) {
       const ok = await this.init();
@@ -211,7 +229,13 @@ export class StockfishClient {
       if (pvLine) {
         this.currentLines.set(pvLine.multipv, pvLine);
 
-        if (this.currentOptions?.onProgress) {
+        const now = Date.now();
+        const depthChanged = pvLine.depth > this.lastEmittedDepth;
+        const timeElapsed = now - this.lastProgressEmit >= 100;
+
+        if (this.currentOptions?.onProgress && (depthChanged || timeElapsed)) {
+          this.lastProgressEmit = now;
+          this.lastEmittedDepth = pvLine.depth;
           const partial = interpretEngineAnalysis(
             this.currentFen,
             Array.from(this.currentLines.values()),

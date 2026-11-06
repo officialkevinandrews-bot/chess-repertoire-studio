@@ -329,7 +329,7 @@ export function EngineAnalysisPanel({
         <div className="flex items-center gap-2">
           {engineSource === "cloud" ? (
             <span className="inline-flex items-center gap-1 rounded-full bg-blue-500/15 border border-blue-500/30 px-2.5 py-0.5 text-[11px] font-semibold text-blue-400">
-              ☁️ Cloud Supercomputer
+              ☁️ Cloud Cluster (Depth 60)
             </span>
           ) : engineSource === "infinite" ? (
             <span className="inline-flex items-center gap-1 rounded-full bg-purple-500/15 border border-purple-500/30 px-2.5 py-0.5 text-[11px] font-semibold text-purple-400">
@@ -337,7 +337,7 @@ export function EngineAnalysisPanel({
             </span>
           ) : (
             <span className="inline-flex items-center gap-1 rounded-full bg-emerald-500/15 border border-emerald-500/30 px-2.5 py-0.5 text-[11px] font-semibold text-emerald-400">
-              💻 Local Stockfish WASM
+              ⚡ Stockfish 19 WASM (NNUE)
             </span>
           )}
 

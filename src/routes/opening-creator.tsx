@@ -96,7 +96,15 @@ function OpeningCreator() {
     saveLineToVariation,
     deleteLineFromVariation,
     refreshRepertoireSystems,
+    requestEvaluation,
   } = useChessTraining();
+
+  // Auto-evaluate current position on initial load if not yet analyzed
+  useEffect(() => {
+    if (!analysis && !isEngineThinking) {
+      requestEvaluation();
+    }
+  }, [analysis, isEngineThinking, requestEvaluation]);
 
   const [lineName, setLineName] = useState("");
   const [isScraping, setIsScraping] = useState(false);
