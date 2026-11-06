@@ -21,7 +21,14 @@ import {
 } from "../services/explanationPrompt";
 import { Chess } from "chess.js";
 import type { EnginePVLine } from "../engine/stockfishTypes";
-import { validateCachedEntry, normalizeFen, type CachedPositionEval } from "../services/evaluationCache";
+import {
+  validateCachedEntry,
+  normalizeFen,
+  clearAllCachedEvaluations,
+  saveEvaluationToCache,
+  getCachedEvaluation,
+  type CachedPositionEval,
+} from "../services/evaluationCache";
 
 describe("Stockfish UCI Parser", () => {
   const startFen = "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1";
@@ -398,6 +405,50 @@ describe("Strict Move Legality & Cache Self-Healing", () => {
 
     const isValid = validateCachedEntry(bothCastledFen, validEntry);
     expect(isValid).toBe(true);
+  });
+
+  it("clears all cached evaluations completely from memory and storage", async () => {
+    const testFen = "rnbqkbnr/pppppppp/8/8/4P3/8/PPPP1PPP/RNBQKBNR b KQkq - 0 1";
+    await saveEvaluationToCache(
+      {
+        fen: testFen,
+        depth: 25,
+        lines: [
+          {
+            multipv: 1,
+            depth: 25,
+            seldepth: 30,
+            score: { type: "cp", value: 20, scoreCp: 20, mateMoves: null },
+            nodes: 10000,
+            nps: 20000,
+            timeMs: 100,
+            pv: ["c7c5"],
+            sanPv: ["c5"],
+            bestMove: "c7c5",
+            bestMoveSan: "c5",
+          },
+        ],
+        profile: {
+          profile: "balanced",
+          topMoveGapCp: 0,
+          pv1To3SpreadCp: 0,
+          reasoning: "Test",
+        },
+        motifs: [],
+        mateAnalysis: { isMate: false, mateInMoves: null, isMating: false },
+        bestMoveSan: "c5",
+        evalWhite: 0.2,
+      },
+      "local",
+    );
+
+    const beforeClear = await getCachedEvaluation(testFen);
+    expect(beforeClear).not.toBeNull();
+
+    await clearAllCachedEvaluations();
+
+    const afterClear = await getCachedEvaluation(testFen);
+    expect(afterClear).toBeNull();
   });
 });
 

@@ -215,6 +215,7 @@ export function EngineAnalysisPanel({
   onSelectLine,
   showArrows = true,
   onToggleArrows,
+  onClearCache,
 }: {
   analysis: import("@/engine/stockfishTypes").EngineAnalysisResult | null;
   isThinking?: boolean;
@@ -232,6 +233,7 @@ export function EngineAnalysisPanel({
   onSelectLine?: (index: number) => void;
   showArrows?: boolean;
   onToggleArrows?: () => void;
+  onClearCache?: () => void;
 }) {
   const formatTime = (secs: number) => {
     const hrs = Math.floor(secs / 3600);
@@ -477,6 +479,16 @@ export function EngineAnalysisPanel({
                     )}
                   >
                     🎯 Arrows: {showArrows ? "ON" : "OFF"}
+                  </button>
+                )}
+                {onClearCache && (
+                  <button
+                    type="button"
+                    onClick={onClearCache}
+                    className="text-[10px] font-semibold px-2 py-0.5 rounded border border-border bg-secondary text-muted-foreground hover:text-destructive hover:border-destructive/40 transition-colors"
+                    title="Clear saved Stockfish evaluation cache to re-evaluate from clean slate"
+                  >
+                    🧹 Clear Cache
                   </button>
                 )}
               </div>

@@ -99,6 +99,7 @@ function OpeningCreator() {
     deleteLineFromVariation,
     refreshRepertoireSystems,
     requestEvaluation,
+    clearEvalCache,
   } = useChessTraining();
 
   // Auto-evaluate current position on initial load if not yet analyzed
@@ -265,6 +266,11 @@ function OpeningCreator() {
     setSelectedLineIndex(null);
     setPreviewStep(0);
     toast.success(`Played ${activeLine.bestMoveSan || lan} on the board`);
+  };
+
+  const handleClearCache = async () => {
+    await clearEvalCache();
+    toast.success("Stockfish evaluation cache cleared. Evaluating fresh lines from scratch.");
   };
 
   const toggleExpand = (varId: string) => {
@@ -773,6 +779,7 @@ function OpeningCreator() {
               }}
               showArrows={showArrows}
               onToggleArrows={() => setShowArrows(!showArrows)}
+              onClearCache={handleClearCache}
             />
 
             <Panel title="Current Line Move List">

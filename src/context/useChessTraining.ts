@@ -23,6 +23,7 @@ import {
   getCachedEvaluation,
   saveEvaluationToCache,
   normalizeFen,
+  clearAllCachedEvaluations,
 } from "../services/evaluationCache";
 import { evaluateTacticalProfile } from "../utils/engineInterpreter";
 import { analyzePositionMotifs } from "../utils/chessMotifs";
@@ -158,6 +159,7 @@ interface ChessTrainingContextValue {
   ) => Promise<void>;
   refreshVariations: () => Promise<void>;
   requestEvaluation: () => Promise<EngineEval>;
+  clearEvalCache: () => Promise<void>;
 }
 
 const ChessTrainingContext = createContext<ChessTrainingContextValue | null>(null);
@@ -731,6 +733,11 @@ export function ChessTrainingProvider({ children }: { children: ReactNode }) {
     return runAnalysis(gameRef.current.fen());
   }, [runAnalysis]);
 
+  const clearEvalCache = useCallback(async () => {
+    await clearAllCachedEvaluations();
+    await runAnalysis(gameRef.current.fen());
+  }, [runAnalysis]);
+
   const value = useMemo(
     () => ({
       telemetry,
@@ -780,6 +787,7 @@ export function ChessTrainingProvider({ children }: { children: ReactNode }) {
       updateVariationGames,
       refreshVariations,
       requestEvaluation,
+      clearEvalCache,
     }),
     [
       telemetry,
@@ -826,6 +834,7 @@ export function ChessTrainingProvider({ children }: { children: ReactNode }) {
       updateVariationGames,
       refreshVariations,
       requestEvaluation,
+      clearEvalCache,
     ],
   );
 

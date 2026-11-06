@@ -14,7 +14,7 @@ export interface CachedPositionEval {
 }
 
 const DB_NAME = "chess_repertoire_eval_cache";
-const DB_VERSION = 1;
+const DB_VERSION = 2;
 const STORE_NAME = "evaluations";
 
 // Fast in-memory L1 cache for instant 0ms access
@@ -76,6 +76,22 @@ export async function purgeCachedEntry(key: string): Promise<void> {
   }
 }
 
+/**
+ * Completely clears all saved engine evaluations from memory and IndexedDB.
+ */
+export async function clearAllCachedEvaluations(): Promise<void> {
+  memoryCache.clear();
+  const db = await getDb();
+  if (!db) return;
+  try {
+    const tx = db.transaction(STORE_NAME, "readwrite");
+    const store = tx.objectStore(STORE_NAME);
+    store.clear();
+  } catch (err) {
+    console.warn("[EvalCache] Failed to clear IndexedDB cache:", err);
+  }
+}
+
 let dbPromise: Promise<IDBDatabase | null> | null = null;
 
 function getDb(): Promise<IDBDatabase | null> {
@@ -90,11 +106,12 @@ function getDb(): Promise<IDBDatabase | null> {
 
         request.onupgradeneeded = (event) => {
           const db = (event.target as IDBOpenDBRequest).result;
-          if (!db.objectStoreNames.contains(STORE_NAME)) {
-            const store = db.createObjectStore(STORE_NAME, { keyPath: "normalizedFen" });
-            store.createIndex("depth", "depth", { unique: false });
-            store.createIndex("timestamp", "timestamp", { unique: false });
+          if (db.objectStoreNames.contains(STORE_NAME)) {
+            db.deleteObjectStore(STORE_NAME);
           }
+          const store = db.createObjectStore(STORE_NAME, { keyPath: "normalizedFen" });
+          store.createIndex("depth", "depth", { unique: false });
+          store.createIndex("timestamp", "timestamp", { unique: false });
         };
 
         request.onsuccess = () => resolve(request.result);
@@ -110,6 +127,15 @@ function getDb(): Promise<IDBDatabase | null> {
   }
 
   return dbPromise;
+}
+
+// Auto-reset previous cache version once on startup
+if (typeof window !== "undefined") {
+  const CACHE_RESET_KEY = "chess_eval_cache_v2_reset";
+  if (!localStorage.getItem(CACHE_RESET_KEY)) {
+    localStorage.setItem(CACHE_RESET_KEY, "true");
+    clearAllCachedEvaluations();
+  }
 }
 
 /**
