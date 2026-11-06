@@ -52,11 +52,11 @@ export class StockfishClient {
           resolve(false);
         };
 
-        // Initialize UCI with Grandmaster depth options
+        // Initialize UCI with Grandmaster depth options (MultiPV 5, Hash 128MB, Skill 20)
         this.sendCommand("uci");
-        this.sendCommand("setoption name MultiPV value 3");
+        this.sendCommand("setoption name MultiPV value 5");
         this.sendCommand("setoption name Threads value 2");
-        this.sendCommand("setoption name Hash value 64");
+        this.sendCommand("setoption name Hash value 128");
         this.sendCommand("setoption name Skill Level value 20");
         this.sendCommand("isready");
 
@@ -86,14 +86,14 @@ export class StockfishClient {
   }
 
   /**
-   * Evaluates a chess position given its FEN string using Deep Stockfish (Depth 25+).
+   * Evaluates a chess position given its FEN string using Deep Stockfish (Depth 25+ / MultiPV 5).
    */
   public async evaluate(
     fen: string,
     options: EvaluationOptions = {},
   ): Promise<EngineAnalysisResult> {
     const depth = options.depth || 25;
-    const movetime = options.movetime || 2500;
+    const multiPv = options.multiPv || 5;
     this.maxDepth = depth;
     this.currentFen = fen;
     this.currentOptions = options;
@@ -102,7 +102,7 @@ export class StockfishClient {
     if (!this.worker || !this.isReady) {
       const initialized = await this.init();
       if (!initialized || !this.worker) {
-        return this.getFallbackEvaluation(fen, options.lastMove, depth);
+        return this.getFallbackEvaluation(fen, options.lastMove, depth, multiPv);
       }
     }
 
@@ -111,14 +111,72 @@ export class StockfishClient {
     }
 
     this.isEvaluating = true;
+    this.sendCommand(`setoption name MultiPV value ${multiPv}`);
 
     return new Promise((resolve) => {
       this.resolveCurrent = resolve;
 
       this.sendCommand("ucinewgame");
       this.sendCommand(`position fen ${fen}`);
-      this.sendCommand(`go depth ${depth} movetime ${movetime}`);
+      if (options.movetime) {
+        this.sendCommand(`go depth ${depth} movetime ${options.movetime}`);
+      } else {
+        this.sendCommand(`go depth ${depth}`);
+      }
     });
+  }
+
+  /**
+   * Starts continuous, unlimited deep engine analysis ("Infinite Analysis").
+   * Runs until stop() or pause() is called, streaming live depth, node count, and lines.
+   */
+  public async startInfinite(
+    fen: string,
+    options: {
+      multiPv?: number;
+      onProgress?: (partial: EngineAnalysisResult) => void;
+      lastMove?: { from: string; to: string };
+    } = {},
+  ): Promise<void> {
+    const multiPv = options.multiPv || 5;
+    this.currentFen = fen;
+    this.currentOptions = { ...options, depth: 99 };
+    this.currentLines.clear();
+
+    if (!this.worker || !this.isReady) {
+      const ok = await this.init();
+      if (!ok || !this.worker) return;
+    }
+
+    if (this.isEvaluating) {
+      this.sendCommand("stop");
+    }
+
+    this.isEvaluating = true;
+    this.sendCommand(`setoption name MultiPV value ${multiPv}`);
+    this.sendCommand("ucinewgame");
+    this.sendCommand(`position fen ${fen}`);
+    this.sendCommand("go infinite");
+  }
+
+  /**
+   * Pauses continuous search while preserving the latest lines and depth.
+   */
+  public pause(): void {
+    if (this.isEvaluating) {
+      this.sendCommand("stop");
+      this.isEvaluating = false;
+    }
+  }
+
+  /**
+   * Resumes continuous search from the current position.
+   */
+  public resume(fen?: string): void {
+    const targetFen = fen || this.currentFen;
+    if (targetFen) {
+      this.startInfinite(targetFen, this.currentOptions || {});
+    }
   }
 
   /**
@@ -188,6 +246,7 @@ export class StockfishClient {
     fen: string,
     lastMove?: { from: string; to: string },
     depth = 25,
+    multiPv = 5,
   ): EngineAnalysisResult {
     const mockLines: EnginePVLine[] = [
       {
@@ -229,9 +288,35 @@ export class StockfishClient {
         bestMove: "g1f3",
         bestMoveSan: "Nf3",
       },
+      {
+        multipv: 4,
+        depth: depth,
+        seldepth: depth + 3,
+        score: { type: "cp", value: 10, scoreCp: 10, mateMoves: null },
+        nodes: 900000,
+        nps: 450000,
+        timeMs: 400,
+        pv: ["c2c4", "e7e5", "b1c3"],
+        sanPv: ["c4", "e5", "Nc3"],
+        bestMove: "c2c4",
+        bestMoveSan: "c4",
+      },
+      {
+        multipv: 5,
+        depth: depth,
+        seldepth: depth + 3,
+        score: { type: "cp", value: 5, scoreCp: 5, mateMoves: null },
+        nodes: 800000,
+        nps: 400000,
+        timeMs: 400,
+        pv: ["b2b3", "e7e5", "c1b2"],
+        sanPv: ["b3", "e5", "Bb2"],
+        bestMove: "b2b3",
+        bestMoveSan: "b3",
+      },
     ];
 
-    return interpretEngineAnalysis(fen, mockLines, lastMove);
+    return interpretEngineAnalysis(fen, mockLines.slice(0, multiPv), lastMove);
   }
 }
 

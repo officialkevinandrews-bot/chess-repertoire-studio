@@ -18,6 +18,7 @@ import {
 } from "react";
 import { stockfishEngine } from "../engine/stockfishClient";
 import type { EngineAnalysisResult } from "../engine/stockfishTypes";
+import { fetchLichessCloudEval } from "../engine/cloudEvalService";
 import {
   classifyMoveQuality,
   generateLocalExplanation,
@@ -49,6 +50,8 @@ import { identifyOpening } from "../utils/openingNames";
 export const START_FEN = "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1";
 
 export type Orientation = "white" | "black";
+export type EngineMode = "super-gm" | "grandmaster" | "quick" | "infinite";
+export type EngineSource = "cloud" | "local" | "infinite";
 
 export interface EngineEval {
   score: number; // Centipawns from White's perspective (+1.00 = +1 pawn)
@@ -82,6 +85,13 @@ interface ChessTrainingContextValue {
   isEngineThinking: boolean;
   explanation: string | null;
   lastClassification: MoveClassification | null;
+  engineMode: EngineMode;
+  setEngineMode: (mode: EngineMode) => void;
+  engineSource: EngineSource;
+  isInfinitePaused: boolean;
+  pauseInfiniteAnalysis: () => void;
+  resumeInfiniteAnalysis: () => void;
+  infiniteElapsedSeconds: number;
   savedVariations: SavedVariation[];
   activeVariation: SavedVariation | null;
   setActiveVariation: (v: SavedVariation | null) => void;
@@ -156,12 +166,31 @@ export function ChessTrainingProvider({ children }: { children: ReactNode }) {
   const [isEngineThinking, setIsEngineThinking] = useState(false);
   const [explanation, setExplanation] = useState<string | null>(null);
   const [lastClassification, setLastClassification] = useState<MoveClassification | null>(null);
+  const [engineMode, setEngineMode] = useState<EngineMode>("super-gm");
+  const [engineSource, setEngineSource] = useState<EngineSource>("cloud");
+  const [isInfinitePaused, setIsInfinitePaused] = useState(false);
+  const [infiniteElapsedSeconds, setInfiniteElapsedSeconds] = useState(0);
   const [savedVariations, setSavedVariations] = useState<SavedVariation[]>([]);
   const [activeVariation, setActiveVariation] = useState<SavedVariation | null>(null);
   const [repertoireSystems, setRepertoireSystems] = useState<RepertoireSystem[]>([]);
   const [activeSystem, setActiveSystem] = useState<RepertoireSystem | null>(null);
   const [activeRepertoireVariation, setActiveRepertoireVariation] = useState<RepertoireVariation | null>(null);
   const [telemetry, setTelemetry] = useState<UserProgressTelemetry>(getUserTelemetry());
+
+  // Timer for Infinite Analysis search duration
+  useEffect(() => {
+    let timer: any = null;
+    if (engineMode === "infinite" && isEngineThinking && !isInfinitePaused) {
+      timer = setInterval(() => {
+        setInfiniteElapsedSeconds((s) => s + 1);
+      }, 1000);
+    } else if (engineMode !== "infinite") {
+      setInfiniteElapsedSeconds(0);
+    }
+    return () => {
+      if (timer) clearInterval(timer);
+    };
+  }, [engineMode, isEngineThinking, isInfinitePaused]);
 
   // Hydrate saved variations, repertoire systems & telemetry from IndexedDB / localStorage on client mount
   useEffect(() => {
@@ -227,18 +256,30 @@ export function ChessTrainingProvider({ children }: { children: ReactNode }) {
     setHistory(gameRef.current.history());
   }, []);
 
-  const runAnalysis = useCallback(
-    async (targetFen: string, lastMove?: { from: string; to: string }) => {
-      setIsEngineThinking(true);
-      try {
-        const prevAnalysis = analysis;
-        const res = await stockfishEngine.evaluate(targetFen, {
-          depth: 15,
-          movetime: 800,
-          lastMove,
-        });
+  const pauseInfiniteAnalysis = useCallback(() => {
+    stockfishEngine.pause();
+    setIsInfinitePaused(true);
+    setIsEngineThinking(false);
+  }, []);
 
+  const resumeInfiniteAnalysis = useCallback(() => {
+    setIsInfinitePaused(false);
+    setIsEngineThinking(true);
+    stockfishEngine.resume();
+  }, []);
+
+  const runAnalysis = useCallback(
+    async (
+      targetFen: string,
+      lastMove?: { from: string; to: string },
+      overrideMode?: EngineMode,
+    ) => {
+      const activeMode = overrideMode || engineMode;
+      setIsEngineThinking(true);
+
+      const handleCompletedResult = (res: EngineAnalysisResult, source: EngineSource) => {
         setAnalysis(res);
+        setEngineSource(source);
         const evalObj: EngineEval = {
           score: res.evalWhite,
           bestMove: res.bestMoveSan,
@@ -247,19 +288,19 @@ export function ChessTrainingProvider({ children }: { children: ReactNode }) {
         setEvaluation(evalObj);
 
         // If a move was just played, compute move classification and plain-English explanation
-        if (lastMove && prevAnalysis) {
+        if (lastMove && analysis) {
           const playedSan = gameRef.current.history().slice(-1)[0] || "";
           const isBest = res.bestMoveSan === playedSan;
-          const evalDiff = res.evalWhite - prevAnalysis.evalWhite;
+          const evalDiff = res.evalWhite - analysis.evalWhite;
           const classification = classifyMoveQuality(evalDiff, isBest);
           setLastClassification(classification);
 
           const exp = generateLocalExplanation({
-            fenBefore: prevAnalysis.fen,
+            fenBefore: analysis.fen,
             fenAfter: targetFen,
             userMoveSan: playedSan,
             userMoveFromTo: lastMove,
-            bestMoveSan: prevAnalysis.bestMoveSan || playedSan,
+            bestMoveSan: analysis.bestMoveSan || playedSan,
             analysis: res,
             evalDiffPawns: evalDiff,
             classification,
@@ -267,15 +308,96 @@ export function ChessTrainingProvider({ children }: { children: ReactNode }) {
           setExplanation(exp);
         }
 
-        setIsEngineThinking(false);
         return evalObj;
+      };
+
+      try {
+        if (activeMode === "super-gm") {
+          // 1. Try Lichess Cloud Cluster first (Depth 40-60+, 50M-100M+ nodes, Stockfish 16/17 NNUE)
+          const cloudRes = await fetchLichessCloudEval(targetFen, 5);
+          if (cloudRes && cloudRes.lines.length > 0 && cloudRes.depth >= 25) {
+            setIsEngineThinking(false);
+            return handleCompletedResult(cloudRes, "cloud");
+          }
+
+          // 2. Fallback to Local Deep Stockfish at Depth 25 with MultiPV 5
+          const localRes = await stockfishEngine.evaluate(targetFen, {
+            depth: 25,
+            multiPv: 5,
+            lastMove,
+            onProgress: (partial) => {
+              setAnalysis(partial);
+              setEngineSource("local");
+              setEvaluation({
+                score: partial.evalWhite,
+                bestMove: partial.bestMoveSan,
+                depth: partial.depth,
+              });
+            },
+          });
+          setIsEngineThinking(false);
+          return handleCompletedResult(localRes, "local");
+        } else if (activeMode === "grandmaster") {
+          const localRes = await stockfishEngine.evaluate(targetFen, {
+            depth: 25,
+            multiPv: 5,
+            lastMove,
+            onProgress: (partial) => {
+              setAnalysis(partial);
+              setEngineSource("local");
+              setEvaluation({
+                score: partial.evalWhite,
+                bestMove: partial.bestMoveSan,
+                depth: partial.depth,
+              });
+            },
+          });
+          setIsEngineThinking(false);
+          return handleCompletedResult(localRes, "local");
+        } else if (activeMode === "quick") {
+          const localRes = await stockfishEngine.evaluate(targetFen, {
+            depth: 18,
+            movetime: 1500,
+            multiPv: 5,
+            lastMove,
+            onProgress: (partial) => {
+              setAnalysis(partial);
+              setEngineSource("local");
+              setEvaluation({
+                score: partial.evalWhite,
+                bestMove: partial.bestMoveSan,
+                depth: partial.depth,
+              });
+            },
+          });
+          setIsEngineThinking(false);
+          return handleCompletedResult(localRes, "local");
+        } else if (activeMode === "infinite") {
+          setEngineSource("infinite");
+          setIsInfinitePaused(false);
+          setInfiniteElapsedSeconds(0);
+          stockfishEngine.startInfinite(targetFen, {
+            multiPv: 5,
+            lastMove,
+            onProgress: (partial) => {
+              setAnalysis(partial);
+              setEvaluation({
+                score: partial.evalWhite,
+                bestMove: partial.bestMoveSan,
+                depth: partial.depth,
+              });
+            },
+          });
+          return evaluation;
+        }
       } catch (err) {
         console.warn("Stockfish evaluation error:", err);
         setIsEngineThinking(false);
         return evaluation;
       }
+      return evaluation;
     },
-    [analysis, evaluation],
+    [analysis, engineMode, evaluation],
   );
 
   const makeMove = useCallback(
@@ -507,6 +629,13 @@ export function ChessTrainingProvider({ children }: { children: ReactNode }) {
       isEngineThinking,
       explanation,
       lastClassification,
+      engineMode,
+      setEngineMode,
+      engineSource,
+      isInfinitePaused,
+      pauseInfiniteAnalysis,
+      resumeInfiniteAnalysis,
+      infiniteElapsedSeconds,
       savedVariations,
       activeVariation,
       setActiveVariation,
@@ -547,6 +676,12 @@ export function ChessTrainingProvider({ children }: { children: ReactNode }) {
       isEngineThinking,
       explanation,
       lastClassification,
+      engineMode,
+      engineSource,
+      isInfinitePaused,
+      pauseInfiniteAnalysis,
+      resumeInfiniteAnalysis,
+      infiniteElapsedSeconds,
       savedVariations,
       activeVariation,
       repertoireSystems,

@@ -145,110 +145,368 @@ export function EvaluationBar({
   );
 }
 
-/** Comprehensive Engine Analysis Panel displaying MultiPV 3, Motifs, and Coach Feedback */
+export interface ArrowColorDef {
+  rank: number;
+  color: string;
+  rgb: string;
+  label: string;
+  sublabel: string;
+  badgeClass: string;
+}
+
+export const ENGINE_ARROW_COLORS: ArrowColorDef[] = [
+  {
+    rank: 1,
+    color: "#10b981",
+    rgb: "rgb(16, 185, 129)",
+    label: "Best Move (#1)",
+    sublabel: "Optimal Engine Move",
+    badgeClass: "bg-emerald-500/20 text-emerald-400 border-emerald-500/40",
+  },
+  {
+    rank: 2,
+    color: "#3b82f6",
+    rgb: "rgb(59, 130, 246)",
+    label: "Alternative (#2)",
+    sublabel: "Strongest Candidate",
+    badgeClass: "bg-blue-500/20 text-blue-400 border-blue-500/40",
+  },
+  {
+    rank: 3,
+    color: "#8b5cf6",
+    rgb: "rgb(139, 92, 246)",
+    label: "Alternative (#3)",
+    sublabel: "Viable Tactical Plan",
+    badgeClass: "bg-purple-500/20 text-purple-400 border-purple-500/40",
+  },
+  {
+    rank: 4,
+    color: "#f59e0b",
+    rgb: "rgb(245, 158, 11)",
+    label: "Alternative (#4)",
+    sublabel: "Dynamic Choice",
+    badgeClass: "bg-amber-500/20 text-amber-400 border-amber-500/40",
+  },
+  {
+    rank: 5,
+    color: "#f43f5e",
+    rgb: "rgb(244, 63, 94)",
+    label: "Alternative (#5)",
+    sublabel: "Sideline Option",
+    badgeClass: "bg-rose-500/20 text-rose-400 border-rose-500/40",
+  },
+];
+
+/** Comprehensive Grandmaster Engine Analysis Panel displaying MultiPV 5, Motifs, Engine Modes, and Arrows Legend */
 export function EngineAnalysisPanel({
   analysis,
   isThinking,
   explanation,
+  engineMode = "super-gm",
+  onSelectMode,
+  engineSource = "cloud",
+  isInfinitePaused = false,
+  onPauseInfinite,
+  onResumeInfinite,
+  infiniteElapsedSeconds = 0,
+  selectedLineIndex,
+  onSelectLine,
+  showArrows = true,
+  onToggleArrows,
 }: {
   analysis: import("@/engine/stockfishTypes").EngineAnalysisResult | null;
   isThinking?: boolean;
   explanation?: string | null;
+  engineMode?: "super-gm" | "grandmaster" | "quick" | "infinite";
+  onSelectMode?: (mode: "super-gm" | "grandmaster" | "quick" | "infinite") => void;
+  engineSource?: "cloud" | "local" | "infinite";
+  isInfinitePaused?: boolean;
+  onPauseInfinite?: () => void;
+  onResumeInfinite?: () => void;
+  infiniteElapsedSeconds?: number;
+  selectedLineIndex?: number | null;
+  onSelectLine?: (index: number) => void;
+  showArrows?: boolean;
+  onToggleArrows?: () => void;
 }) {
-  if (!analysis) {
-    return (
-      <Panel title="Stockfish Brain (MultiPV 3)">
-        <p className="text-sm text-muted-foreground">
-          {isThinking
-            ? "Engine is analyzing position..."
-            : "Make a move to trigger multi-line engine analysis."}
-        </p>
-      </Panel>
-    );
-  }
+  const formatTime = (secs: number) => {
+    const hrs = Math.floor(secs / 3600);
+    const mins = Math.floor((secs % 3600) / 60);
+    const s = secs % 60;
+    if (hrs > 0) {
+      return `${hrs.toString().padStart(2, "0")}:${mins.toString().padStart(2, "0")}:${s.toString().padStart(2, "0")}`;
+    }
+    return `${mins.toString().padStart(2, "0")}:${s.toString().padStart(2, "0")}`;
+  };
 
-  const profile = analysis.profile;
-  const isTactic = profile.profile === "forced_tactic";
-  const isPositional = profile.profile === "quiet_positional";
+  const modeButtons = [
+    { id: "super-gm", label: "Super-GM", icon: "👑", desc: "Depth 40-60+ (Cloud + Local)" },
+    { id: "grandmaster", label: "Grandmaster", icon: "🏆", desc: "Depth 25 (Local Engine)" },
+    { id: "quick", label: "Quick", icon: "⚡", desc: "Depth 18 (Fast Check)" },
+    { id: "infinite", label: "Infinite", icon: "♾️", desc: "Continuous Deep Search" },
+  ] as const;
 
   return (
-    <Panel title="Stockfish Engine Analysis (MultiPV 3)" className="space-y-4">
-      {/* Tactical Profile Badge */}
-      <div className="flex flex-wrap items-center justify-between gap-2 border-b border-border pb-3">
-        <div className="flex items-center gap-2">
-          <span
-            className={cn(
-              "rounded-full px-2.5 py-0.5 text-xs font-semibold uppercase tracking-wider",
-              isTactic && "bg-amber-500/20 text-amber-400 border border-amber-500/30",
-              isPositional && "bg-emerald-500/20 text-emerald-400 border border-emerald-500/30",
-              !isTactic &&
-                !isPositional &&
-                "bg-blue-500/20 text-blue-400 border border-blue-500/30",
-            )}
-          >
-            {profile.profile.replace("_", " ")}
+    <Panel title="Grandmaster Stockfish Brain (Top 5 Moves)" className="space-y-3.5">
+      {/* Engine Mode Switcher */}
+      <div className="space-y-1.5">
+        <div className="flex items-center justify-between text-xs">
+          <span className="font-semibold uppercase tracking-wider text-muted-foreground text-[10px]">
+            Engine Depth &amp; Mode
           </span>
-          <span className="text-xs text-muted-foreground font-mono">Depth {analysis.depth}</span>
+          <span className="text-[11px] font-mono text-primary font-medium">
+            {engineMode === "super-gm" && "👑 Super-GM (Depth 40–60+ Default)"}
+            {engineMode === "grandmaster" && "🏆 Grandmaster (Depth 25)"}
+            {engineMode === "quick" && "⚡ Quick Analysis (Depth 18)"}
+            {engineMode === "infinite" && "♾️ Infinite Continuous Search"}
+          </span>
         </div>
-        <span className="font-mono text-xs font-medium text-foreground">
-          Eval: {analysis.evalWhite > 0 ? "+" : ""}
-          {analysis.evalWhite.toFixed(2)}
-        </span>
+
+        <div className="grid grid-cols-4 gap-1.5">
+          {modeButtons.map((btn) => {
+            const isActive = engineMode === btn.id;
+            return (
+              <button
+                key={btn.id}
+                type="button"
+                onClick={() => onSelectMode?.(btn.id)}
+                title={btn.desc}
+                className={cn(
+                  "flex flex-col items-center justify-center rounded-lg border p-1.5 text-center transition-all",
+                  isActive
+                    ? "border-primary bg-primary/15 text-primary font-bold shadow-sm"
+                    : "border-border bg-secondary/40 text-muted-foreground hover:bg-secondary hover:text-foreground",
+                )}
+              >
+                <span className="text-base leading-none mb-1">{btn.icon}</span>
+                <span className="text-[11px] font-semibold tracking-tight">{btn.label}</span>
+              </button>
+            );
+          })}
+        </div>
       </div>
 
-      <p className="text-xs text-muted-foreground leading-relaxed">{profile.reasoning}</p>
+      {/* Infinite Analysis Running / Paused Toolbar */}
+      {engineMode === "infinite" && (
+        <div className="flex items-center justify-between gap-2 rounded-lg border border-purple-500/40 bg-purple-500/10 p-2 text-xs font-mono animate-in fade-in">
+          <div className="flex items-center gap-2">
+            <span className="relative flex h-2 w-2">
+              {!isInfinitePaused && (
+                <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-purple-400 opacity-75"></span>
+              )}
+              <span className={cn("relative inline-flex rounded-full h-2 w-2", isInfinitePaused ? "bg-amber-400" : "bg-purple-500")}></span>
+            </span>
+            <span className="text-foreground font-semibold">
+              {isInfinitePaused ? "Analysis Paused" : "Calculating Deep..."}
+            </span>
+            <span className="text-muted-foreground">⏱️ {formatTime(infiniteElapsedSeconds)}</span>
+          </div>
 
-      {/* Grandmaster AI Coach Explanation */}
-      {explanation && (
-        <div className="rounded-lg border border-primary/40 bg-primary/10 p-3 text-xs leading-relaxed text-foreground animate-in fade-in">
-          <span className="font-semibold text-primary block mb-1">Coach Insight:</span>
-          {explanation}
-        </div>
-      )}
-
-      {/* Tactical Motifs Detected */}
-      {analysis.motifs.length > 0 && (
-        <div className="space-y-1.5">
-          <span className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
-            Detected Motifs
-          </span>
-          <div className="flex flex-wrap gap-1.5">
-            {analysis.motifs.map((m, i) => (
-              <span
-                key={i}
-                title={m.description}
-                className="rounded-md bg-secondary border border-border px-2 py-1 text-xs font-medium text-foreground"
+          <div>
+            {isInfinitePaused ? (
+              <button
+                type="button"
+                onClick={onResumeInfinite}
+                className="rounded bg-primary px-2.5 py-1 text-xs font-semibold text-primary-foreground shadow hover:bg-primary/90"
               >
-                {m.name}
-              </span>
-            ))}
+                ▶️ Resume
+              </button>
+            ) : (
+              <button
+                type="button"
+                onClick={onPauseInfinite}
+                className="rounded bg-secondary border border-border px-2.5 py-1 text-xs font-semibold text-foreground hover:bg-secondary/80"
+              >
+                ⏸️ Pause
+              </button>
+            )}
           </div>
         </div>
       )}
 
-      {/* Top 3 Engine Variation Lines */}
-      <div className="space-y-1.5 pt-1">
-        <span className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
-          Top Variations (MultiPV 3)
-        </span>
-        <div className="divide-y divide-border/60 rounded-lg border border-border bg-secondary/40 font-mono text-xs">
-          {analysis.lines.slice(0, 3).map((line) => (
-            <div key={line.multipv} className="flex items-center justify-between p-2">
-              <div className="flex items-center gap-2 overflow-hidden text-ellipsis whitespace-nowrap">
-                <span className="text-muted-foreground font-semibold">#{line.multipv}</span>
-                <span className="text-foreground">
-                  {line.sanPv.slice(0, 5).join(" ") || line.bestMoveSan}
-                </span>
-              </div>
-              <span className="text-muted-foreground font-semibold shrink-0 ml-2">
-                {line.score.type === "mate"
-                  ? `#${line.score.mateMoves}`
-                  : `${(line.score.scoreCp / 100).toFixed(2)}`}
-              </span>
-            </div>
-          ))}
+      {/* Engine Status / Data Source Banner */}
+      <div className="flex flex-wrap items-center justify-between gap-2 border-b border-border pb-2 text-xs">
+        <div className="flex items-center gap-2">
+          {engineSource === "cloud" ? (
+            <span className="inline-flex items-center gap-1 rounded-full bg-blue-500/15 border border-blue-500/30 px-2.5 py-0.5 text-[11px] font-semibold text-blue-400">
+              ☁️ Cloud Supercomputer
+            </span>
+          ) : engineSource === "infinite" ? (
+            <span className="inline-flex items-center gap-1 rounded-full bg-purple-500/15 border border-purple-500/30 px-2.5 py-0.5 text-[11px] font-semibold text-purple-400">
+              ♾️ Deep Infinite Search
+            </span>
+          ) : (
+            <span className="inline-flex items-center gap-1 rounded-full bg-emerald-500/15 border border-emerald-500/30 px-2.5 py-0.5 text-[11px] font-semibold text-emerald-400">
+              💻 Local Stockfish WASM
+            </span>
+          )}
+
+          <span className="font-mono text-muted-foreground text-xs font-medium">
+            Depth {analysis?.depth || 0}
+          </span>
+          {isThinking && (
+            <span className="text-[11px] text-primary animate-pulse font-medium">
+              Searching...
+            </span>
+          )}
         </div>
+
+        <span className="font-mono text-xs font-bold text-foreground">
+          Eval: {analysis ? (analysis.evalWhite > 0 ? "+" : "") + analysis.evalWhite.toFixed(2) : "0.00"}
+        </span>
       </div>
+
+      {!analysis ? (
+        <p className="text-xs text-muted-foreground">
+          {isThinking
+            ? "Grandmaster engine is calculating top 5 candidate lines..."
+            : "Make a move or choose an opening line to start analysis."}
+        </p>
+      ) : (
+        <>
+          {/* Tactical Profile Badge */}
+          <div className="flex items-center justify-between text-xs">
+            <span
+              className={cn(
+                "rounded-full px-2.5 py-0.5 text-[11px] font-semibold uppercase tracking-wider",
+                analysis.profile.profile === "forced_tactic" &&
+                  "bg-amber-500/20 text-amber-400 border border-amber-500/30",
+                analysis.profile.profile === "quiet_positional" &&
+                  "bg-emerald-500/20 text-emerald-400 border border-emerald-500/30",
+                analysis.profile.profile === "balanced" &&
+                  "bg-blue-500/20 text-blue-400 border border-blue-500/30",
+              )}
+            >
+              {analysis.profile.profile.replace("_", " ")}
+            </span>
+            <span className="text-[11px] text-muted-foreground truncate max-w-[220px]">
+              {analysis.profile.reasoning}
+            </span>
+          </div>
+
+          {/* Grandmaster AI Coach Explanation */}
+          {explanation && (
+            <div className="rounded-lg border border-primary/40 bg-primary/10 p-2.5 text-xs leading-relaxed text-foreground animate-in fade-in">
+              <span className="font-semibold text-primary block mb-0.5">Coach Insight:</span>
+              {explanation}
+            </div>
+          )}
+
+          {/* Tactical Motifs */}
+          {analysis.motifs.length > 0 && (
+            <div className="flex flex-wrap gap-1.5">
+              {analysis.motifs.map((m, i) => (
+                <span
+                  key={i}
+                  title={m.description}
+                  className="rounded-md bg-secondary border border-border px-2 py-0.5 text-[11px] font-medium text-foreground"
+                >
+                  {m.name}
+                </span>
+              ))}
+            </div>
+          )}
+
+          {/* Top 5 Engine Candidate Lines */}
+          <div className="space-y-1.5 pt-1">
+            <div className="flex items-center justify-between">
+              <span className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
+                Top 5 Candidate Moves (Click line to step through)
+              </span>
+              {onToggleArrows && (
+                <button
+                  type="button"
+                  onClick={onToggleArrows}
+                  className={cn(
+                    "text-[10px] font-semibold px-2 py-0.5 rounded border transition-colors",
+                    showArrows
+                      ? "bg-primary/20 text-primary border-primary/40 font-bold"
+                      : "bg-secondary text-muted-foreground border-border hover:text-foreground",
+                  )}
+                >
+                  🎯 Arrows: {showArrows ? "ON" : "OFF"}
+                </button>
+              )}
+            </div>
+
+            <div className="divide-y divide-border/60 rounded-lg border border-border bg-secondary/30 font-mono text-xs overflow-hidden">
+              {analysis.lines.slice(0, 5).map((line, idx) => {
+                const colorDef = ENGINE_ARROW_COLORS[idx] || ENGINE_ARROW_COLORS[0];
+                const isSelected = selectedLineIndex === idx;
+                const evalText =
+                  line.score.type === "mate"
+                    ? `#${line.score.mateMoves}`
+                    : `${line.score.scoreCp > 0 ? "+" : ""}${(line.score.scoreCp / 100).toFixed(2)}`;
+
+                return (
+                  <button
+                    key={line.multipv}
+                    type="button"
+                    onClick={() => onSelectLine?.(idx)}
+                    title={`Click to step through move-by-move: ${line.sanPv.join(" ")}`}
+                    className={cn(
+                      "w-full text-left flex items-center justify-between p-2 transition-colors cursor-pointer",
+                      isSelected
+                        ? "bg-primary/20 border-l-4 border-l-primary"
+                        : "hover:bg-secondary/70",
+                    )}
+                  >
+                    <div className="flex items-center gap-2 overflow-hidden text-ellipsis whitespace-nowrap">
+                      {/* Color Rank Dot */}
+                      <span
+                        className="inline-block h-3 w-3 rounded-full shrink-0 shadow-sm"
+                        style={{ backgroundColor: colorDef.color }}
+                        title={colorDef.label}
+                      />
+                      <span className="font-bold text-foreground">
+                        #{idx + 1} {line.bestMoveSan}
+                      </span>
+                      <span className="text-muted-foreground text-[11px] overflow-hidden text-ellipsis">
+                        {line.sanPv.slice(1, 6).join(" ")}
+                      </span>
+                    </div>
+
+                    <div className="flex items-center gap-2 shrink-0 ml-2">
+                      <span
+                        className={cn(
+                          "rounded px-1.5 py-0.5 text-[11px] font-bold border",
+                          colorDef.badgeClass,
+                        )}
+                      >
+                        {evalText}
+                      </span>
+                    </div>
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+
+          {/* Colored Arrows Legend */}
+          <div className="rounded-lg border border-border bg-card/60 p-2.5 text-[11px] space-y-1.5">
+            <span className="font-semibold uppercase tracking-wider text-muted-foreground text-[10px] block">
+              Arrow Color Key
+            </span>
+            <div className="grid grid-cols-2 sm:grid-cols-3 gap-1.5 font-medium">
+              {ENGINE_ARROW_COLORS.map((c) => {
+                const line = analysis.lines[c.rank - 1];
+                return (
+                  <div key={c.rank} className="flex items-center gap-1.5 text-foreground">
+                    <span
+                      className="h-2.5 w-2.5 rounded-full shrink-0 shadow-sm"
+                      style={{ backgroundColor: c.color }}
+                    />
+                    <span className="truncate">
+                      <span className="font-bold">#{c.rank}:</span>{" "}
+                      {line?.bestMoveSan || c.label.split(" ")[0]}
+                    </span>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        </>
+      )}
     </Panel>
   );
 }

@@ -1,5 +1,6 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { useEffect, useMemo, useState } from "react";
+import { Chess } from "chess.js";
 import {
   BookOpen,
   ChevronDown,
@@ -20,10 +21,12 @@ import {
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { ChessBoard } from "@/components/chess/ChessBoard";
+import { ChessBoard, type BoardArrow } from "@/components/chess/ChessBoard";
+import { EngineLineExplorer } from "@/components/chess/EngineLineExplorer";
 import {
   DataSourceBadge,
   EngineAnalysisPanel,
+  ENGINE_ARROW_COLORS,
   EvaluationBar,
   MoveList,
   PageHeader,
@@ -74,6 +77,13 @@ function OpeningCreator() {
     analysis,
     isEngineThinking,
     explanation,
+    engineMode,
+    setEngineMode,
+    engineSource,
+    isInfinitePaused,
+    pauseInfiniteAnalysis,
+    resumeInfiniteAnalysis,
+    infiniteElapsedSeconds,
     repertoireSystems,
     activeSystem,
     setActiveSystem,
@@ -91,6 +101,11 @@ function OpeningCreator() {
   const [lineName, setLineName] = useState("");
   const [isScraping, setIsScraping] = useState(false);
   const [scraperStatus, setScraperStatus] = useState<ScraperProgress | null>(null);
+
+  // Engine Candidate Line Explorer & Board Arrows State
+  const [selectedLineIndex, setSelectedLineIndex] = useState<number | null>(null);
+  const [previewStep, setPreviewStep] = useState<number>(0);
+  const [showArrows, setShowArrows] = useState<boolean>(true);
 
   // New Variation Dialog State
   const [isAddingVariation, setIsAddingVariation] = useState(false);
@@ -127,6 +142,120 @@ function OpeningCreator() {
       }
     }
   }, [activeSystem, activeRepertoireVariation, setActiveRepertoireVariation]);
+
+  // Clear line preview when root FEN changes
+  useEffect(() => {
+    setSelectedLineIndex(null);
+    setPreviewStep(0);
+  }, [fen]);
+
+  const activeLine =
+    selectedLineIndex !== null && analysis?.lines?.[selectedLineIndex]
+      ? analysis.lines[selectedLineIndex]
+      : null;
+
+  const { previewFen, previewSanMoves } = useMemo(() => {
+    if (!activeLine) {
+      return { previewFen: null, previewSanMoves: [] };
+    }
+
+    try {
+      const sim = new Chess(fen);
+      const sans: string[] = [];
+      for (const lan of activeLine.pv) {
+        try {
+          const from = lan.slice(0, 2);
+          const to = lan.slice(2, 4);
+          const promotion = lan.length > 4 ? lan[4] : undefined;
+          const res = sim.move({ from, to, promotion });
+          if (!res) break;
+          sans.push(res.san);
+        } catch {
+          break;
+        }
+      }
+
+      let stepFen: string | null = null;
+      if (previewStep > 0) {
+        const stepSim = new Chess(fen);
+        const steps = Math.min(previewStep, activeLine.pv.length);
+        for (let i = 0; i < steps; i++) {
+          const lan = activeLine.pv[i];
+          const from = lan.slice(0, 2);
+          const to = lan.slice(2, 4);
+          const promotion = lan.length > 4 ? lan[4] : undefined;
+          stepSim.move({ from, to, promotion });
+        }
+        stepFen = stepSim.fen();
+      }
+
+      return {
+        previewFen: stepFen,
+        previewSanMoves: sans.length > 0 ? sans : activeLine.sanPv,
+      };
+    } catch {
+      return { previewFen: null, previewSanMoves: activeLine.sanPv || [] };
+    }
+  }, [activeLine, fen, previewStep]);
+
+  const engineArrows: BoardArrow[] = useMemo(() => {
+    if (!showArrows || !analysis?.lines || analysis.lines.length === 0) return [];
+
+    // If currently previewing a specific candidate line
+    if (activeLine && selectedLineIndex !== null) {
+      const colorDef = ENGINE_ARROW_COLORS[selectedLineIndex] || ENGINE_ARROW_COLORS[0];
+
+      // If at step 0, show the first move of this line
+      if (previewStep === 0 && activeLine.pv.length > 0) {
+        const lan = activeLine.pv[0];
+        return [
+          {
+            startSquare: lan.slice(0, 2),
+            endSquare: lan.slice(2, 4),
+            color: colorDef.rgb,
+          },
+        ];
+      }
+      // If at step > 0 and there's a subsequent move in the line, show that move
+      if (previewStep > 0 && previewStep < activeLine.pv.length) {
+        const lan = activeLine.pv[previewStep];
+        return [
+          {
+            startSquare: lan.slice(0, 2),
+            endSquare: lan.slice(2, 4),
+            color: colorDef.rgb,
+          },
+        ];
+      }
+      return [];
+    }
+
+    // Default overview: Show colored arrows for top 5 candidate moves!
+    return analysis.lines
+      .slice(0, 5)
+      .map((line, idx) => {
+        const colorDef = ENGINE_ARROW_COLORS[idx] || ENGINE_ARROW_COLORS[0];
+        const lan = line.pv[0];
+        if (!lan || lan.length < 4) return null;
+        return {
+          startSquare: lan.slice(0, 2),
+          endSquare: lan.slice(2, 4),
+          color: colorDef.rgb,
+        };
+      })
+      .filter((a): a is BoardArrow => a !== null);
+  }, [showArrows, analysis, activeLine, selectedLineIndex, previewStep]);
+
+  const handlePlayLineBestMove = () => {
+    if (!activeLine || activeLine.pv.length === 0) return;
+    const lan = activeLine.pv[0];
+    const from = lan.slice(0, 2);
+    const to = lan.slice(2, 4);
+    makeMove(from, to);
+    setSelectedLineIndex(null);
+    setPreviewStep(0);
+    toast.success(`Played ${activeLine.bestMoveSan || lan} on the board`);
+  };
 
   const toggleExpand = (varId: string) => {
     setExpandedVarIds((prev) => ({ ...prev, [varId]: !prev[varId] }));
@@ -566,7 +695,29 @@ function OpeningCreator() {
                   isThinking={isEngineThinking}
                 />
                 <div className="flex-1 space-y-3">
-                  <ChessBoard fen={fen} orientation={orientation} onMove={makeMove} />
+                  {/* Interactive Move-by-Move Line Explorer when candidate line is clicked */}
+                  {activeLine && (
+                    <EngineLineExplorer
+                      line={activeLine}
+                      rank={(selectedLineIndex ?? 0) + 1}
+                      currentStep={previewStep}
+                      totalSteps={activeLine.pv.length}
+                      sanMoves={previewSanMoves}
+                      onStepChange={(step) => setPreviewStep(step)}
+                      onPlayMove={handlePlayLineBestMove}
+                      onClose={() => {
+                        setSelectedLineIndex(null);
+                        setPreviewStep(0);
+                      }}
+                    />
+                  )}
+
+                  <ChessBoard
+                    fen={previewFen || fen}
+                    orientation={orientation}
+                    onMove={previewFen ? undefined : makeMove}
+                    arrows={engineArrows}
+                  />
 
                   {/* Active Repertoire Breadcrumb Tag */}
                   <div className="flex items-center justify-between rounded-lg border border-border bg-card px-3 py-2 text-xs shadow-sm">
@@ -591,6 +742,25 @@ function OpeningCreator() {
               analysis={analysis}
               isThinking={isEngineThinking}
               explanation={explanation}
+              engineMode={engineMode}
+              onSelectMode={setEngineMode}
+              engineSource={engineSource}
+              isInfinitePaused={isInfinitePaused}
+              onPauseInfinite={pauseInfiniteAnalysis}
+              onResumeInfinite={resumeInfiniteAnalysis}
+              infiniteElapsedSeconds={infiniteElapsedSeconds}
+              selectedLineIndex={selectedLineIndex}
+              onSelectLine={(idx) => {
+                if (selectedLineIndex === idx) {
+                  setSelectedLineIndex(null);
+                  setPreviewStep(0);
+                } else {
+                  setSelectedLineIndex(idx);
+                  setPreviewStep(0);
+                }
+              }}
+              showArrows={showArrows}
+              onToggleArrows={() => setShowArrows(!showArrows)}
             />
 
             <Panel title="Current Line Move List">
