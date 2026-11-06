@@ -197,13 +197,15 @@ export const ENGINE_ARROW_COLORS: ArrowColorDef[] = [
   },
 ];
 
-/** Comprehensive Grandmaster Engine Analysis Panel displaying MultiPV 5, Motifs, Engine Modes, and Arrows Legend */
+/** Comprehensive Grandmaster Engine Analysis Panel displaying MultiPV 3/5, Motifs, Engine Modes, and Arrows Legend */
 export function EngineAnalysisPanel({
   analysis,
   isThinking,
   explanation,
   engineMode = "super-gm",
   onSelectMode,
+  candidateLinesCount = 5,
+  onSelectLinesCount,
   engineSource = "cloud",
   isInfinitePaused = false,
   onPauseInfinite,
@@ -219,7 +221,9 @@ export function EngineAnalysisPanel({
   explanation?: string | null;
   engineMode?: "super-gm" | "grandmaster" | "quick" | "infinite";
   onSelectMode?: (mode: "super-gm" | "grandmaster" | "quick" | "infinite") => void;
-  engineSource?: "cloud" | "local" | "infinite";
+  candidateLinesCount?: 3 | 5;
+  onSelectLinesCount?: (count: 3 | 5) => void;
+  engineSource?: "cloud" | "local" | "infinite" | "cache";
   isInfinitePaused?: boolean;
   onPauseInfinite?: () => void;
   onResumeInfinite?: () => void;
@@ -247,7 +251,7 @@ export function EngineAnalysisPanel({
   ] as const;
 
   return (
-    <Panel title="Grandmaster Stockfish Brain (Top 5 Moves)" className="space-y-3.5">
+    <Panel title={`Grandmaster Stockfish Brain (Top ${candidateLinesCount} Moves)`} className="space-y-3.5">
       {/* Engine Mode Switcher */}
       <div className="space-y-1.5">
         <div className="flex items-center justify-between text-xs">
@@ -331,6 +335,10 @@ export function EngineAnalysisPanel({
             <span className="inline-flex items-center gap-1 rounded-full bg-blue-500/15 border border-blue-500/30 px-2.5 py-0.5 text-[11px] font-semibold text-blue-400">
               ☁️ Cloud Cluster (Depth 60)
             </span>
+          ) : engineSource === "cache" ? (
+            <span className="inline-flex items-center gap-1 rounded-full bg-amber-500/15 border border-amber-500/30 px-2.5 py-0.5 text-[11px] font-semibold text-amber-400">
+              💾 Instant Memory Cache (Depth {analysis?.depth || 0})
+            </span>
           ) : engineSource === "infinite" ? (
             <span className="inline-flex items-center gap-1 rounded-full bg-purple-500/15 border border-purple-500/30 px-2.5 py-0.5 text-[11px] font-semibold text-purple-400">
               ♾️ Deep Infinite Search
@@ -359,7 +367,7 @@ export function EngineAnalysisPanel({
       {!analysis ? (
         <p className="text-xs text-muted-foreground">
           {isThinking
-            ? "Grandmaster engine is calculating top 5 candidate lines..."
+            ? `Grandmaster engine is calculating top ${candidateLinesCount} candidate lines...`
             : "Make a move or choose an opening line to start analysis."}
         </p>
       ) : (
@@ -407,30 +415,62 @@ export function EngineAnalysisPanel({
             </div>
           )}
 
-          {/* Top 5 Engine Candidate Lines */}
+          {/* Top Engine Candidate Lines */}
           <div className="space-y-1.5 pt-1">
-            <div className="flex items-center justify-between">
+            <div className="flex flex-wrap items-center justify-between gap-2">
               <span className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
-                Top 5 Candidate Moves (Click line to step through)
+                Top {candidateLinesCount} Candidate Moves (Click line to step through)
               </span>
-              {onToggleArrows && (
-                <button
-                  type="button"
-                  onClick={onToggleArrows}
-                  className={cn(
-                    "text-[10px] font-semibold px-2 py-0.5 rounded border transition-colors",
-                    showArrows
-                      ? "bg-primary/20 text-primary border-primary/40 font-bold"
-                      : "bg-secondary text-muted-foreground border-border hover:text-foreground",
-                  )}
-                >
-                  🎯 Arrows: {showArrows ? "ON" : "OFF"}
-                </button>
-              )}
+              <div className="flex items-center gap-1.5">
+                {onSelectLinesCount && (
+                  <div className="flex items-center rounded border border-border bg-secondary/80 p-0.5 text-[10px] font-semibold">
+                    <button
+                      type="button"
+                      onClick={() => onSelectLinesCount(3)}
+                      className={cn(
+                        "px-2 py-0.5 rounded transition-all",
+                        candidateLinesCount === 3
+                          ? "bg-primary text-primary-foreground font-bold shadow-xs"
+                          : "text-muted-foreground hover:text-foreground",
+                      )}
+                      title="3 Lines: ~2x faster search speed, prioritizes main lines"
+                    >
+                      3 Lines ⚡
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => onSelectLinesCount(5)}
+                      className={cn(
+                        "px-2 py-0.5 rounded transition-all",
+                        candidateLinesCount === 5
+                          ? "bg-primary text-primary-foreground font-bold shadow-xs"
+                          : "text-muted-foreground hover:text-foreground",
+                      )}
+                      title="5 Lines: Exhaustive candidate search (Super-GM default)"
+                    >
+                      5 Lines 🔬
+                    </button>
+                  </div>
+                )}
+                {onToggleArrows && (
+                  <button
+                    type="button"
+                    onClick={onToggleArrows}
+                    className={cn(
+                      "text-[10px] font-semibold px-2 py-0.5 rounded border transition-colors",
+                      showArrows
+                        ? "bg-primary/20 text-primary border-primary/40 font-bold"
+                        : "bg-secondary text-muted-foreground border-border hover:text-foreground",
+                    )}
+                  >
+                    🎯 Arrows: {showArrows ? "ON" : "OFF"}
+                  </button>
+                )}
+              </div>
             </div>
 
             <div className="divide-y divide-border/60 rounded-lg border border-border bg-secondary/30 font-mono text-xs overflow-hidden">
-              {analysis.lines.slice(0, 5).map((line, idx) => {
+              {analysis.lines.slice(0, candidateLinesCount).map((line, idx) => {
                 const colorDef = ENGINE_ARROW_COLORS[idx] || ENGINE_ARROW_COLORS[0];
                 const isSelected = selectedLineIndex === idx;
                 const evalText =
@@ -488,7 +528,7 @@ export function EngineAnalysisPanel({
               Arrow Color Key
             </span>
             <div className="grid grid-cols-2 sm:grid-cols-3 gap-1.5 font-medium">
-              {ENGINE_ARROW_COLORS.map((c) => {
+              {ENGINE_ARROW_COLORS.slice(0, candidateLinesCount).map((c) => {
                 const line = analysis.lines[c.rank - 1];
                 return (
                   <div key={c.rank} className="flex items-center gap-1.5 text-foreground">

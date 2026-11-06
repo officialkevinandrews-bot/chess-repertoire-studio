@@ -20,6 +20,13 @@ import { stockfishEngine } from "../engine/stockfishClient";
 import type { EngineAnalysisResult } from "../engine/stockfishTypes";
 import { fetchLichessCloudEval } from "../engine/cloudEvalService";
 import {
+  getCachedEvaluation,
+  saveEvaluationToCache,
+} from "../services/evaluationCache";
+import { evaluateTacticalProfile } from "../utils/engineInterpreter";
+import { analyzePositionMotifs } from "../utils/chessMotifs";
+import { analyzeMateFromLine } from "../utils/mateFilter";
+import {
   classifyMoveQuality,
   generateLocalExplanation,
   type MoveClassification,
@@ -51,7 +58,7 @@ export const START_FEN = "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0
 
 export type Orientation = "white" | "black";
 export type EngineMode = "super-gm" | "grandmaster" | "quick" | "infinite";
-export type EngineSource = "cloud" | "local" | "infinite";
+export type EngineSource = "cloud" | "local" | "infinite" | "cache";
 
 export interface EngineEval {
   score: number; // Centipawns from White's perspective (+1.00 = +1 pawn)
@@ -87,6 +94,8 @@ interface ChessTrainingContextValue {
   lastClassification: MoveClassification | null;
   engineMode: EngineMode;
   setEngineMode: (mode: EngineMode) => void;
+  candidateLinesCount: 3 | 5;
+  setCandidateLinesCount: (count: 3 | 5) => void;
   engineSource: EngineSource;
   isInfinitePaused: boolean;
   pauseInfiniteAnalysis: () => void;
@@ -167,6 +176,7 @@ export function ChessTrainingProvider({ children }: { children: ReactNode }) {
   const [explanation, setExplanation] = useState<string | null>(null);
   const [lastClassification, setLastClassification] = useState<MoveClassification | null>(null);
   const [engineMode, setEngineMode] = useState<EngineMode>("super-gm");
+  const [candidateLinesCount, setCandidateLinesCountState] = useState<3 | 5>(5);
   const [engineSource, setEngineSource] = useState<EngineSource>("cloud");
   const [isInfinitePaused, setIsInfinitePaused] = useState(false);
   const [infiniteElapsedSeconds, setInfiniteElapsedSeconds] = useState(0);
@@ -273,8 +283,10 @@ export function ChessTrainingProvider({ children }: { children: ReactNode }) {
       targetFen: string,
       lastMove?: { from: string; to: string },
       overrideMode?: EngineMode,
+      overrideLinesCount?: 3 | 5,
     ) => {
       const activeMode = overrideMode || engineMode;
+      const linesCount = overrideLinesCount || candidateLinesCount || 5;
       setIsEngineThinking(true);
 
       const handleCompletedResult = (res: EngineAnalysisResult, source: EngineSource) => {
@@ -286,6 +298,9 @@ export function ChessTrainingProvider({ children }: { children: ReactNode }) {
           depth: res.depth,
         };
         setEvaluation(evalObj);
+
+        // Persist deep evaluation to persistent IndexedDB cache
+        saveEvaluationToCache(res, source);
 
         // If a move was just played, compute move classification and plain-English explanation
         if (lastMove && analysis) {
@@ -312,18 +327,46 @@ export function ChessTrainingProvider({ children }: { children: ReactNode }) {
       };
 
       try {
+        // 0. Check persistent evaluation cache for this position (instant 0ms)
+        const cached = await getCachedEvaluation(targetFen);
+        if (cached && cached.depth >= 15) {
+          const cachedLines = cached.lines.slice(0, linesCount);
+          const cachedAnalysis: EngineAnalysisResult = {
+            fen: targetFen,
+            depth: cached.depth,
+            lines: cachedLines,
+            profile: evaluateTacticalProfile(cachedLines),
+            motifs: analyzePositionMotifs(targetFen, cachedLines[0]?.pv || [], lastMove),
+            mateAnalysis: analyzeMateFromLine(targetFen, cachedLines[0]),
+            bestMoveSan: cached.bestMoveSan,
+            evalWhite: cached.evalWhite,
+          };
+
+          handleCompletedResult(cachedAnalysis, "cache");
+
+          const targetDepth = activeMode === "quick" ? 18 : 25;
+          if (activeMode !== "infinite" && cached.depth >= targetDepth) {
+            setIsEngineThinking(false);
+            return {
+              score: cached.evalWhite,
+              bestMove: cached.bestMoveSan,
+              depth: cached.depth,
+            };
+          }
+        }
+
         if (activeMode === "super-gm") {
-          // 1. Try Lichess Cloud Cluster first (Depth 40-60+, 50M-100M+ nodes, Stockfish 16/17 NNUE)
-          const cloudRes = await fetchLichessCloudEval(targetFen, 5);
+          // 1. Try Lichess Cloud Cluster first (Depth 40-60+, 50M-100M+ nodes, Stockfish 16/17/19 NNUE)
+          const cloudRes = await fetchLichessCloudEval(targetFen, linesCount);
           if (cloudRes && cloudRes.lines.length > 0 && cloudRes.depth >= 25) {
             setIsEngineThinking(false);
             return handleCompletedResult(cloudRes, "cloud");
           }
 
-          // 2. Fallback to Local Deep Stockfish at Depth 25 with MultiPV 5
+          // 2. Fallback to Local Deep Stockfish 19 at Depth 25 with progressive depth streaming
           const localRes = await stockfishEngine.evaluate(targetFen, {
             depth: 25,
-            multiPv: 5,
+            multiPv: linesCount,
             lastMove,
             onProgress: (partial) => {
               setAnalysis(partial);
@@ -333,6 +376,9 @@ export function ChessTrainingProvider({ children }: { children: ReactNode }) {
                 bestMove: partial.bestMoveSan,
                 depth: partial.depth,
               });
+              if (partial.depth >= 16) {
+                saveEvaluationToCache(partial, "local");
+              }
             },
           });
           setIsEngineThinking(false);
@@ -340,7 +386,7 @@ export function ChessTrainingProvider({ children }: { children: ReactNode }) {
         } else if (activeMode === "grandmaster") {
           const localRes = await stockfishEngine.evaluate(targetFen, {
             depth: 25,
-            multiPv: 5,
+            multiPv: linesCount,
             lastMove,
             onProgress: (partial) => {
               setAnalysis(partial);
@@ -350,6 +396,9 @@ export function ChessTrainingProvider({ children }: { children: ReactNode }) {
                 bestMove: partial.bestMoveSan,
                 depth: partial.depth,
               });
+              if (partial.depth >= 16) {
+                saveEvaluationToCache(partial, "local");
+              }
             },
           });
           setIsEngineThinking(false);
@@ -358,7 +407,7 @@ export function ChessTrainingProvider({ children }: { children: ReactNode }) {
           const localRes = await stockfishEngine.evaluate(targetFen, {
             depth: 18,
             movetime: 1500,
-            multiPv: 5,
+            multiPv: linesCount,
             lastMove,
             onProgress: (partial) => {
               setAnalysis(partial);
@@ -368,6 +417,9 @@ export function ChessTrainingProvider({ children }: { children: ReactNode }) {
                 bestMove: partial.bestMoveSan,
                 depth: partial.depth,
               });
+              if (partial.depth >= 16) {
+                saveEvaluationToCache(partial, "local");
+              }
             },
           });
           setIsEngineThinking(false);
@@ -377,7 +429,7 @@ export function ChessTrainingProvider({ children }: { children: ReactNode }) {
           setIsInfinitePaused(false);
           setInfiniteElapsedSeconds(0);
           stockfishEngine.startInfinite(targetFen, {
-            multiPv: 5,
+            multiPv: linesCount,
             lastMove,
             onProgress: (partial) => {
               setAnalysis(partial);
@@ -386,6 +438,9 @@ export function ChessTrainingProvider({ children }: { children: ReactNode }) {
                 bestMove: partial.bestMoveSan,
                 depth: partial.depth,
               });
+              if (partial.depth >= 18) {
+                saveEvaluationToCache(partial, "infinite");
+              }
             },
           });
           return evaluation;
@@ -397,7 +452,15 @@ export function ChessTrainingProvider({ children }: { children: ReactNode }) {
       }
       return evaluation;
     },
-    [analysis, engineMode, evaluation],
+    [analysis, candidateLinesCount, engineMode, evaluation],
+  );
+
+  const setCandidateLinesCount = useCallback(
+    (count: 3 | 5) => {
+      setCandidateLinesCountState(count);
+      runAnalysis(gameRef.current.fen(), undefined, undefined, count);
+    },
+    [runAnalysis],
   );
 
   const makeMove = useCallback(
@@ -631,6 +694,8 @@ export function ChessTrainingProvider({ children }: { children: ReactNode }) {
       lastClassification,
       engineMode,
       setEngineMode,
+      candidateLinesCount,
+      setCandidateLinesCount,
       engineSource,
       isInfinitePaused,
       pauseInfiniteAnalysis,
@@ -677,6 +742,8 @@ export function ChessTrainingProvider({ children }: { children: ReactNode }) {
       explanation,
       lastClassification,
       engineMode,
+      candidateLinesCount,
+      setCandidateLinesCount,
       engineSource,
       isInfinitePaused,
       pauseInfiniteAnalysis,

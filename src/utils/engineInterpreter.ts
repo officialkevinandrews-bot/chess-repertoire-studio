@@ -1,3 +1,4 @@
+import { Chess } from "chess.js";
 import type {
   EngineAnalysisResult,
   EnginePVLine,
@@ -94,13 +95,40 @@ export function evaluateTacticalProfile(lines: EnginePVLine[]): ProfileDetails {
 /**
  * Translates raw Stockfish MultiPV lines into a complete human-accessible
  * tactical, strategic, and checkmate profile.
+ *
+ * Automatically sorts candidate lines dynamically by true evaluation from the
+ * perspective of the side whose turn it is to move, ensuring any move that
+ * becomes superior at deeper depth instantly overtakes lower-ranked lines.
  */
 export function interpretEngineAnalysis(
   fen: string,
   lines: EnginePVLine[],
   lastMove?: { from: string; to: string },
 ): EngineAnalysisResult {
-  const sortedLines = [...lines].sort((a, b) => a.multipv - b.multipv);
+  // Determine side to move from FEN
+  let isWhiteTurn = true;
+  try {
+    const c = new Chess(fen);
+    isWhiteTurn = c.turn() === "w";
+  } catch {
+    isWhiteTurn = true;
+  }
+
+  // Relative score for the player whose turn it is:
+  // For White, higher scoreCp is better; for Black, more negative scoreCp is better.
+  const getRelativeScore = (line: EnginePVLine) => {
+    return isWhiteTurn ? line.score.scoreCp : -line.score.scoreCp;
+  };
+
+  // Sort candidate lines strictly by best score for the current player,
+  // then reassign dynamic ranks (1..N).
+  const sortedLines = [...lines]
+    .sort((a, b) => getRelativeScore(b) - getRelativeScore(a))
+    .map((line, idx) => ({
+      ...line,
+      multipv: idx + 1,
+    }));
+
   const topLine = sortedLines[0];
 
   const profile = evaluateTacticalProfile(sortedLines);

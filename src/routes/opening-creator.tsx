@@ -79,6 +79,8 @@ function OpeningCreator() {
     explanation,
     engineMode,
     setEngineMode,
+    candidateLinesCount,
+    setCandidateLinesCount,
     engineSource,
     isInfinitePaused,
     pauseInfiniteAnalysis,
@@ -238,9 +240,9 @@ function OpeningCreator() {
       return [];
     }
 
-    // Default overview: Show colored arrows for top 5 candidate moves!
+    // Default overview: Show colored arrows for top candidate moves!
     return analysis.lines
-      .slice(0, 5)
+      .slice(0, candidateLinesCount || 5)
       .map((line, idx) => {
         const colorDef = ENGINE_ARROW_COLORS[idx] || ENGINE_ARROW_COLORS[0];
         const lan = line.pv[0];
@@ -252,7 +254,7 @@ function OpeningCreator() {
         };
       })
       .filter((a): a is BoardArrow => a !== null);
-  }, [showArrows, analysis, activeLine, selectedLineIndex, previewStep]);
+  }, [showArrows, analysis, activeLine, selectedLineIndex, previewStep, candidateLinesCount]);
 
   const handlePlayLineBestMove = () => {
     if (!activeLine || activeLine.pv.length === 0) return;
@@ -752,6 +754,8 @@ function OpeningCreator() {
               explanation={explanation}
               engineMode={engineMode}
               onSelectMode={setEngineMode}
+              candidateLinesCount={candidateLinesCount}
+              onSelectLinesCount={setCandidateLinesCount}
               engineSource={engineSource}
               isInfinitePaused={isInfinitePaused}
               onPauseInfinite={pauseInfiniteAnalysis}
