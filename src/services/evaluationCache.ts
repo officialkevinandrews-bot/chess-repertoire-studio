@@ -1,3 +1,4 @@
+import { Chess } from "chess.js";
 import type { EngineAnalysisResult, EnginePVLine } from "../engine/stockfishTypes";
 import type { EngineSource } from "../context/useChessTraining";
 
@@ -27,6 +28,52 @@ export function normalizeFen(fen: string): string {
   if (!fen) return "";
   const parts = fen.trim().split(/\s+/);
   return parts.slice(0, 4).join(" ");
+}
+
+/**
+ * Validates that candidate moves in a cached evaluation are strictly 100% legal in the target position.
+ * Protects against any stale race-condition entries (e.g. castling after having castled).
+ */
+export function validateCachedEntry(fen: string, entry: CachedPositionEval): boolean {
+  if (!entry || !entry.lines || entry.lines.length === 0) return false;
+  try {
+    const chess = new Chess(fen);
+    const moves = chess.moves({ verbose: true });
+    const legalSans = new Set(moves.map((m) => m.san));
+    const legalSansBase = new Set(moves.map((m) => m.san.replace(/[+#]/g, "")));
+    const legalLans = new Set(moves.map((m) => `${m.from}${m.to}${m.promotion || ""}`));
+    const strip = (s?: string) => (s ? s.replace(/[+#]/g, "") : "");
+
+    // Top move must be legal
+    const top = entry.lines[0];
+    if (!top) return false;
+    if (
+      !legalSans.has(top.bestMoveSan) &&
+      !legalSansBase.has(strip(top.bestMoveSan)) &&
+      !legalLans.has(top.bestMove) &&
+      (!top.pv[0] || (!legalLans.has(top.pv[0]) && !legalSansBase.has(strip(top.pv[0]))))
+    ) {
+      return false;
+    }
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * Purges an invalid or corrupted entry from both L1 memory cache and IndexedDB.
+ */
+export async function purgeCachedEntry(key: string): Promise<void> {
+  memoryCache.delete(key);
+  const db = await getDb();
+  if (!db) return;
+  try {
+    const tx = db.transaction(STORE_NAME, "readwrite");
+    tx.objectStore(STORE_NAME).delete(key);
+  } catch {
+    // ignore
+  }
 }
 
 let dbPromise: Promise<IDBDatabase | null> | null = null;
@@ -67,7 +114,7 @@ function getDb(): Promise<IDBDatabase | null> {
 
 /**
  * Retrieves a previously calculated deep evaluation from memory or IndexedDB.
- * Returns null if this position has not yet been analyzed.
+ * Returns null if this position has not yet been analyzed or if cached data is invalid.
  */
 export async function getCachedEvaluation(fen: string): Promise<CachedPositionEval | null> {
   const key = normalizeFen(fen);
@@ -75,7 +122,14 @@ export async function getCachedEvaluation(fen: string): Promise<CachedPositionEv
 
   // 1. Check L1 memory cache (instant 0ms)
   if (memoryCache.has(key)) {
-    return memoryCache.get(key) || null;
+    const cached = memoryCache.get(key) || null;
+    if (cached) {
+      if (!validateCachedEntry(fen, cached)) {
+        purgeCachedEntry(key);
+      } else {
+        return cached;
+      }
+    }
   }
 
   // 2. Check IndexedDB persistent storage
@@ -91,8 +145,13 @@ export async function getCachedEvaluation(fen: string): Promise<CachedPositionEv
       request.onsuccess = () => {
         const result = request.result as CachedPositionEval | undefined;
         if (result) {
-          memoryCache.set(key, result);
-          resolve(result);
+          if (!validateCachedEntry(fen, result)) {
+            purgeCachedEntry(key);
+            resolve(null);
+          } else {
+            memoryCache.set(key, result);
+            resolve(result);
+          }
         } else {
           resolve(null);
         }
@@ -136,6 +195,11 @@ export async function saveEvaluationToCache(
     source,
     timestamp: Date.now(),
   };
+
+  // Only save if the moves are 100% legal for this FEN!
+  if (!validateCachedEntry(result.fen, entry)) {
+    return;
+  }
 
   // Update memory cache
   memoryCache.set(key, entry);

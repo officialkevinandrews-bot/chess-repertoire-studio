@@ -22,6 +22,7 @@ import { fetchLichessCloudEval } from "../engine/cloudEvalService";
 import {
   getCachedEvaluation,
   saveEvaluationToCache,
+  normalizeFen,
 } from "../services/evaluationCache";
 import { evaluateTacticalProfile } from "../utils/engineInterpreter";
 import { analyzePositionMotifs } from "../utils/chessMotifs";
@@ -163,6 +164,7 @@ const ChessTrainingContext = createContext<ChessTrainingContextValue | null>(nul
 
 export function ChessTrainingProvider({ children }: { children: ReactNode }) {
   const gameRef = useRef(new Chess());
+  const analysisTargetFenRef = useRef<string>(START_FEN);
   const [fen, setFen] = useState(START_FEN);
   const [history, setHistory] = useState<string[]>([]);
   const [orientation, setOrientation] = useState<Orientation>("white");
@@ -287,9 +289,19 @@ export function ChessTrainingProvider({ children }: { children: ReactNode }) {
     ) => {
       const activeMode = overrideMode || engineMode;
       const linesCount = overrideLinesCount || candidateLinesCount || 5;
+      analysisTargetFenRef.current = targetFen;
       setIsEngineThinking(true);
 
       const handleCompletedResult = (res: EngineAnalysisResult, source: EngineSource) => {
+        const currentBoardFen = gameRef.current.fen();
+        // Guard against stale asynchronous returns when navigating or playing quickly
+        if (
+          normalizeFen(res.fen) !== normalizeFen(currentBoardFen) ||
+          normalizeFen(targetFen) !== normalizeFen(currentBoardFen)
+        ) {
+          return { score: res.evalWhite, bestMove: res.bestMoveSan, depth: res.depth };
+        }
+
         setAnalysis(res);
         setEngineSource(source);
         const evalObj: EngineEval = {
@@ -330,29 +342,32 @@ export function ChessTrainingProvider({ children }: { children: ReactNode }) {
         // 0. Check persistent evaluation cache for this position (instant 0ms)
         const cached = await getCachedEvaluation(targetFen);
         if (cached && cached.depth >= 15) {
-          const cachedLines = cached.lines.slice(0, linesCount);
-          const cachedAnalysis: EngineAnalysisResult = {
-            fen: targetFen,
-            depth: cached.depth,
-            lines: cachedLines,
-            profile: evaluateTacticalProfile(cachedLines),
-            motifs: analyzePositionMotifs(targetFen, cachedLines[0]?.pv || [], lastMove),
-            mateAnalysis: analyzeMateFromLine(targetFen, cachedLines[0]),
-            bestMoveSan: cached.bestMoveSan,
-            evalWhite: cached.evalWhite,
-          };
-
-          handleCompletedResult(cachedAnalysis, "cache");
-
-          const targetDepth =
-            activeMode === "quick" ? 18 : activeMode === "grandmaster" ? 35 : 50;
-          if (activeMode !== "infinite" && cached.depth >= targetDepth) {
-            setIsEngineThinking(false);
-            return {
-              score: cached.evalWhite,
-              bestMove: cached.bestMoveSan,
+          const currentBoardFen = gameRef.current.fen();
+          if (normalizeFen(targetFen) === normalizeFen(currentBoardFen)) {
+            const cachedLines = cached.lines.slice(0, linesCount);
+            const cachedAnalysis: EngineAnalysisResult = {
+              fen: targetFen,
               depth: cached.depth,
+              lines: cachedLines,
+              profile: evaluateTacticalProfile(cachedLines),
+              motifs: analyzePositionMotifs(targetFen, cachedLines[0]?.pv || [], lastMove),
+              mateAnalysis: analyzeMateFromLine(targetFen, cachedLines[0]),
+              bestMoveSan: cached.bestMoveSan,
+              evalWhite: cached.evalWhite,
             };
+
+            handleCompletedResult(cachedAnalysis, "cache");
+
+            const targetDepth =
+              activeMode === "quick" ? 18 : activeMode === "grandmaster" ? 35 : 50;
+            if (activeMode !== "infinite" && cached.depth >= targetDepth) {
+              setIsEngineThinking(false);
+              return {
+                score: cached.evalWhite,
+                bestMove: cached.bestMoveSan,
+                depth: cached.depth,
+              };
+            }
           }
         }
 
@@ -370,6 +385,13 @@ export function ChessTrainingProvider({ children }: { children: ReactNode }) {
             multiPv: linesCount,
             lastMove,
             onProgress: (partial) => {
+              const currentBoardFen = gameRef.current.fen();
+              if (
+                normalizeFen(partial.fen) !== normalizeFen(currentBoardFen) ||
+                normalizeFen(targetFen) !== normalizeFen(currentBoardFen)
+              ) {
+                return;
+              }
               setAnalysis(partial);
               setEngineSource("local");
               setEvaluation({
@@ -390,6 +412,13 @@ export function ChessTrainingProvider({ children }: { children: ReactNode }) {
             multiPv: linesCount,
             lastMove,
             onProgress: (partial) => {
+              const currentBoardFen = gameRef.current.fen();
+              if (
+                normalizeFen(partial.fen) !== normalizeFen(currentBoardFen) ||
+                normalizeFen(targetFen) !== normalizeFen(currentBoardFen)
+              ) {
+                return;
+              }
               setAnalysis(partial);
               setEngineSource("local");
               setEvaluation({
@@ -411,6 +440,13 @@ export function ChessTrainingProvider({ children }: { children: ReactNode }) {
             multiPv: linesCount,
             lastMove,
             onProgress: (partial) => {
+              const currentBoardFen = gameRef.current.fen();
+              if (
+                normalizeFen(partial.fen) !== normalizeFen(currentBoardFen) ||
+                normalizeFen(targetFen) !== normalizeFen(currentBoardFen)
+              ) {
+                return;
+              }
               setAnalysis(partial);
               setEngineSource("local");
               setEvaluation({
@@ -419,7 +455,7 @@ export function ChessTrainingProvider({ children }: { children: ReactNode }) {
                 depth: partial.depth,
               });
               if (partial.depth >= 16) {
-                saveEvaluationToCache(partial, "local");
+                saveEvaluationToCache(partial, "quick");
               }
             },
           });
@@ -433,6 +469,13 @@ export function ChessTrainingProvider({ children }: { children: ReactNode }) {
             multiPv: linesCount,
             lastMove,
             onProgress: (partial) => {
+              const currentBoardFen = gameRef.current.fen();
+              if (
+                normalizeFen(partial.fen) !== normalizeFen(currentBoardFen) ||
+                normalizeFen(targetFen) !== normalizeFen(currentBoardFen)
+              ) {
+                return;
+              }
               setAnalysis(partial);
               setEvaluation({
                 score: partial.evalWhite,

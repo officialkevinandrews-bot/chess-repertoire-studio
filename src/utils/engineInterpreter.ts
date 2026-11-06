@@ -105,13 +105,36 @@ export function interpretEngineAnalysis(
   lines: EnginePVLine[],
   lastMove?: { from: string; to: string },
 ): EngineAnalysisResult {
-  // Determine side to move from FEN
+  // Determine side to move and set of legal moves from FEN
   let isWhiteTurn = true;
+  let legalSans = new Set<string>();
+  let legalLans = new Set<string>();
+  let linesToUse: EnginePVLine[] = lines;
   try {
     const c = new Chess(fen);
     isWhiteTurn = c.turn() === "w";
+    const moves = c.moves({ verbose: true });
+    legalSans = new Set(moves.map((m) => m.san));
+    legalLans = new Set(moves.map((m) => `${m.from}${m.to}${m.promotion || ""}`));
+    const legalSansBase = new Set(moves.map((m) => m.san.replace(/[+#]/g, "")));
+    const strip = (s?: string) => (s ? s.replace(/[+#]/g, "") : "");
+
+    // Filter out any line that is NOT a legal move in this position!
+    // This guarantees impossible moves (like castling after having castled) can NEVER appear.
+    const validLines =
+      legalSans.size > 0
+        ? lines.filter(
+            (line) =>
+              legalSans.has(line.bestMoveSan) ||
+              legalSansBase.has(strip(line.bestMoveSan)) ||
+              legalLans.has(line.bestMove) ||
+              (line.pv[0] && (legalLans.has(line.pv[0]) || legalSansBase.has(strip(line.pv[0])))),
+          )
+        : lines;
+    linesToUse = validLines.length > 0 ? validLines : lines;
   } catch {
     isWhiteTurn = true;
+    linesToUse = lines;
   }
 
   // Relative score for the player whose turn it is:
@@ -122,7 +145,7 @@ export function interpretEngineAnalysis(
 
   // Sort candidate lines strictly by best score for the current player,
   // then reassign dynamic ranks (1..N).
-  const sortedLines = [...lines]
+  const sortedLines = [...linesToUse]
     .sort((a, b) => getRelativeScore(b) - getRelativeScore(a))
     .map((line, idx) => ({
       ...line,

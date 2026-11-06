@@ -99,6 +99,43 @@ export class StockfishClient {
     });
   }
 
+  private currentSearchId = 0;
+  private isStopping = false;
+
+  /**
+   * Gracefully stops any in-flight search and awaits the worker's acknowledgment
+   * ('bestmove' or 'readyok') to ensure no lingering output leaks into subsequent searches.
+   */
+  private async stopCurrentSearch(): Promise<void> {
+    if ((!this.isEvaluating && !this.isStopping) || !this.worker) return;
+
+    this.isStopping = true;
+    return new Promise((resolve) => {
+      // Invalidate any pending resolve callback so old searches never resolve new requests
+      this.resolveCurrent = null;
+
+      const cleanup = () => {
+        this.worker?.removeEventListener("message", onMsg);
+        clearTimeout(timer);
+        this.isEvaluating = false;
+        this.isStopping = false;
+        resolve();
+      };
+
+      const onMsg = (e: MessageEvent) => {
+        const msg = String(e.data || "").trim();
+        if (msg.startsWith("bestmove ") || msg.includes("readyok")) {
+          cleanup();
+        }
+      };
+
+      const timer = setTimeout(cleanup, 200);
+
+      this.worker.addEventListener("message", onMsg);
+      this.sendCommand("stop");
+    });
+  }
+
   /**
    * Evaluates a chess position given its FEN string using Deep Stockfish (Depth 25+ / MultiPV 5).
    */
@@ -106,14 +143,9 @@ export class StockfishClient {
     fen: string,
     options: EvaluationOptions = {},
   ): Promise<EngineAnalysisResult> {
+    const searchId = ++this.currentSearchId;
     const depth = options.depth || 50;
     const multiPv = options.multiPv || 5;
-    this.maxDepth = depth;
-    this.currentFen = fen;
-    this.currentOptions = options;
-    this.currentLines.clear();
-    this.lastProgressEmit = 0;
-    this.lastEmittedDepth = 0;
 
     if (!this.worker || !this.isReady) {
       const initialized = await this.init();
@@ -122,17 +154,32 @@ export class StockfishClient {
       }
     }
 
-    if (this.isEvaluating) {
-      this.sendCommand("stop");
+    if (this.isEvaluating || this.isStopping) {
+      await this.stopCurrentSearch();
     }
 
+    // If another search was initiated while we were waiting for stop, abandon this stale run
+    if (searchId !== this.currentSearchId) {
+      return this.getFallbackEvaluation(fen, options.lastMove, depth, multiPv);
+    }
+
+    this.maxDepth = depth;
+    this.currentFen = fen;
+    this.currentOptions = options;
+    this.currentLines.clear();
+    this.lastProgressEmit = 0;
+    this.lastEmittedDepth = 0;
     this.isEvaluating = true;
+
     this.sendCommand(`setoption name MultiPV value ${multiPv}`);
 
     return new Promise((resolve) => {
-      this.resolveCurrent = resolve;
+      this.resolveCurrent = (result) => {
+        if (this.currentSearchId === searchId) {
+          resolve(result);
+        }
+      };
 
-      this.sendCommand("ucinewgame");
       this.sendCommand(`position fen ${fen}`);
       if (options.movetime) {
         this.sendCommand(`go depth ${depth} movetime ${options.movetime}`);
@@ -154,25 +201,30 @@ export class StockfishClient {
       lastMove?: { from: string; to: string };
     } = {},
   ): Promise<void> {
+    const searchId = ++this.currentSearchId;
     const multiPv = options.multiPv || 5;
-    this.currentFen = fen;
-    this.currentOptions = { ...options, depth: 99 };
-    this.currentLines.clear();
-    this.lastProgressEmit = 0;
-    this.lastEmittedDepth = 0;
 
     if (!this.worker || !this.isReady) {
       const ok = await this.init();
       if (!ok || !this.worker) return;
     }
 
-    if (this.isEvaluating) {
-      this.sendCommand("stop");
+    if (this.isEvaluating || this.isStopping) {
+      await this.stopCurrentSearch();
     }
 
+    if (searchId !== this.currentSearchId) {
+      return;
+    }
+
+    this.currentFen = fen;
+    this.currentOptions = { ...options, depth: 99 };
+    this.currentLines.clear();
+    this.lastProgressEmit = 0;
+    this.lastEmittedDepth = 0;
     this.isEvaluating = true;
+
     this.sendCommand(`setoption name MultiPV value ${multiPv}`);
-    this.sendCommand("ucinewgame");
     this.sendCommand(`position fen ${fen}`);
     this.sendCommand("go infinite");
   }
@@ -184,6 +236,7 @@ export class StockfishClient {
     if (this.isEvaluating) {
       this.sendCommand("stop");
       this.isEvaluating = false;
+      this.resolveCurrent = null;
     }
   }
 
@@ -204,6 +257,7 @@ export class StockfishClient {
     if (this.isEvaluating) {
       this.sendCommand("stop");
       this.isEvaluating = false;
+      this.resolveCurrent = null;
     }
   }
 
@@ -225,6 +279,9 @@ export class StockfishClient {
     if (!trimmed) return;
 
     if (trimmed.startsWith("info ")) {
+      // Discard info messages if not evaluating or currently stopping
+      if (!this.isEvaluating || this.isStopping) return;
+
       const pvLine = parseUciInfoLine(trimmed, this.currentFen);
       if (pvLine) {
         this.currentLines.set(pvLine.multipv, pvLine);
@@ -245,6 +302,10 @@ export class StockfishClient {
         }
       }
     } else if (trimmed.startsWith("bestmove ")) {
+      if (this.isStopping) {
+        // Lingering bestmove from a stopped search; ignore it
+        return;
+      }
       this.isEvaluating = false;
       const bestMoveInfo = parseBestMove(trimmed);
 

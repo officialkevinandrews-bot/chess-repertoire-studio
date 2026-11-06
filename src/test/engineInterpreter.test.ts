@@ -21,6 +21,7 @@ import {
 } from "../services/explanationPrompt";
 import { Chess } from "chess.js";
 import type { EnginePVLine } from "../engine/stockfishTypes";
+import { validateCachedEntry, normalizeFen, type CachedPositionEval } from "../services/evaluationCache";
 
 describe("Stockfish UCI Parser", () => {
   const startFen = "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1";
@@ -294,3 +295,109 @@ describe("AI Explanation Framework", () => {
     expect(exp).toContain("move");
   });
 });
+
+describe("Strict Move Legality & Cache Self-Healing", () => {
+  // Position where both White and Black have already castled kingside:
+  // 1. e4 e5 2. Nf3 Nc6 3. Bc4 Bc5 4. O-O Nf6 5. d3 O-O
+  const bothCastledFen = "r1bq1rk1/ppp2ppp/2np1n2/2b1p3/2B1P3/3P1N2/PPP2PPP/RNBQ1RK1 w - - 2 6";
+
+  it("filters out impossible castling moves if engine output had stale pre-castling moves", () => {
+    // Stale lines from before castling that proposed O-O (e1g1) as best move
+    const staleLines: EnginePVLine[] = [
+      {
+        multipv: 1,
+        depth: 25,
+        seldepth: 30,
+        score: { type: "cp", value: 35, scoreCp: 35, mateMoves: null },
+        nodes: 50000,
+        nps: 100000,
+        timeMs: 500,
+        pv: ["e1g1", "f8e8"],
+        sanPv: ["O-O", "Re8"],
+        bestMove: "e1g1",
+        bestMoveSan: "O-O",
+      },
+      {
+        multipv: 2,
+        depth: 25,
+        seldepth: 30,
+        score: { type: "cp", value: 30, scoreCp: 30, mateMoves: null },
+        nodes: 50000,
+        nps: 100000,
+        timeMs: 500,
+        pv: ["b1c3", "h7h6"],
+        sanPv: ["Nc3", "h6"],
+        bestMove: "b1c3",
+        bestMoveSan: "Nc3",
+      },
+    ];
+
+    const result = interpretEngineAnalysis(bothCastledFen, staleLines);
+
+    // Castling O-O MUST be filtered out because White's king is already on g1
+    expect(result.bestMoveSan).not.toBe("O-O");
+    expect(result.bestMoveSan).toBe("Nc3");
+    expect(result.lines.some((l) => l.bestMoveSan === "O-O" || l.bestMove === "e1g1")).toBe(false);
+  });
+
+  it("identifies corrupted cached entries that propose illegal castling and rejects them", () => {
+    const corruptedEntry: CachedPositionEval = {
+      normalizedFen: normalizeFen(bothCastledFen),
+      fullFen: bothCastledFen,
+      depth: 30,
+      evalWhite: 0.45,
+      bestMoveSan: "O-O",
+      lines: [
+        {
+          multipv: 1,
+          depth: 30,
+          seldepth: 35,
+          score: { type: "cp", value: 45, scoreCp: 45, mateMoves: null },
+          nodes: 100000,
+          nps: 200000,
+          timeMs: 500,
+          pv: ["e1g1"],
+          sanPv: ["O-O"],
+          bestMove: "e1g1",
+          bestMoveSan: "O-O",
+        },
+      ],
+      source: "local",
+      timestamp: Date.now(),
+    };
+
+    const isValid = validateCachedEntry(bothCastledFen, corruptedEntry);
+    expect(isValid).toBe(false);
+  });
+
+  it("validates genuine legal moves in cache correctly", () => {
+    const validEntry: CachedPositionEval = {
+      normalizedFen: normalizeFen(bothCastledFen),
+      fullFen: bothCastledFen,
+      depth: 30,
+      evalWhite: 0.35,
+      bestMoveSan: "Nc3",
+      lines: [
+        {
+          multipv: 1,
+          depth: 30,
+          seldepth: 35,
+          score: { type: "cp", value: 35, scoreCp: 35, mateMoves: null },
+          nodes: 100000,
+          nps: 200000,
+          timeMs: 500,
+          pv: ["b1c3"],
+          sanPv: ["Nc3"],
+          bestMove: "b1c3",
+          bestMoveSan: "Nc3",
+        },
+      ],
+      source: "local",
+      timestamp: Date.now(),
+    };
+
+    const isValid = validateCachedEntry(bothCastledFen, validEntry);
+    expect(isValid).toBe(true);
+  });
+});
+
