@@ -525,8 +525,12 @@ export async function scrapeGamesForVariation(
     }
   };
 
+  const isVitest =
+    typeof process !== "undefined" &&
+    Boolean(process.env?.VITEST || process.env?.NODE_ENV === "test");
+
   // 1. Live Query via Lichess Masters & Player Explorer with persistent token
-  if (token) {
+  if (token && !isVitest) {
     onProgress?.({
       stage: "explorer",
       message: "Querying Lichess Masters & 2200-2500+ database...",

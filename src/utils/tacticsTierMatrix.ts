@@ -13,11 +13,12 @@ export function classifyTacticalTier(
   rating: number,
   moveCountOrPlies: number,
 ): { tierLevel: TacticalTierLevel; tierName: TacticalTierName; tierDef: TacticalTierDef } {
-  const fullMoves = moveCountOrPlies > 6 ? Math.round(moveCountOrPlies / 2) : moveCountOrPlies;
+  const plies = moveCountOrPlies;
+  const fullMoves = plies > 6 ? Math.round(plies / 2) : plies;
 
   let level: TacticalTierLevel = 1;
 
-  if (rating < 1000 || (fullMoves <= 1 && rating < 1150)) {
+  if (plies <= 1 || (fullMoves <= 1 && rating < 1400) || rating < 1000) {
     level = 1; // Level 1: Novice Observer (direct 1-move tactical strike)
   } else if (rating < 1300 && fullMoves <= 2) {
     level = 2; // Level 2: Tactical Apprentice
@@ -38,7 +39,7 @@ export function classifyTacticalTier(
   }
 
   // Fallback rating boundaries if moves diverge
-  if (fullMoves > 1) {
+  if (fullMoves > 1 && plies > 1) {
     if (rating >= 2500) level = 9;
     else if (rating >= 2300 && level < 8) level = 8;
     else if (rating >= 2100 && level < 7) level = 7;

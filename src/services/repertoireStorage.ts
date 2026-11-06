@@ -115,6 +115,9 @@ export interface TacticsPuzzleItem {
   players?: string;
   openingVariationId?: string;
   openingName?: string;
+  variationName?: string;
+  repertoireSystemId?: string;
+  repertoireVariationId?: string;
   explanation: string;
   isCheckmate: false; // STRICT: checkmates excluded!
 }
@@ -137,6 +140,39 @@ export interface TacticsGlobalProgress {
   lastSyncTimestamp: string;
 }
 
+export interface RepertoireLine {
+  id: string;
+  variationId: string;
+  name: string;
+  moves: string[];
+  finalFen: string;
+  pgn: string;
+  createdAt: string;
+  games?: ScrapedGame[];
+  endgames?: PracticalEndgameTarget[];
+}
+
+export interface RepertoireVariation {
+  id: string;
+  systemId: string;
+  name: string;
+  eco?: string;
+  lichessVariationTag?: string;
+  lines: RepertoireLine[];
+  createdAt: string;
+}
+
+export interface RepertoireSystem {
+  id: string;
+  name: string;
+  color: "white" | "black";
+  ecoGroup: string;
+  lichessOpeningTag: string;
+  description: string;
+  variations: RepertoireVariation[];
+  createdAt: string;
+}
+
 export interface SavedVariation {
   id: string;
   name: string;
@@ -155,12 +191,14 @@ export interface SavedVariation {
 }
 
 const DB_NAME = "chess_buddy_storage";
-const DB_VERSION = 3;
+const DB_VERSION = 4;
 const STORE_NAME = "variations";
 const TACTICS_STORE_NAME = "tactics_puzzles";
 const TACTICS_PROGRESS_STORE_NAME = "tactics_user_progress";
+const REPERTOIRE_SYSTEMS_STORE_NAME = "repertoire_systems";
 
 const LS_BACKUP_KEY = "chess_buddy_saved_variations_meta";
+const REPERTOIRE_SYSTEMS_LS_KEY = "chess_buddy_repertoire_systems";
 const TOKEN_KEY = "chess_buddy_lichess_token";
 const TELEMETRY_KEY = "chess_buddy_user_telemetry";
 const TACTICS_LS_KEY = "chess_buddy_tactics_puzzles";
@@ -238,6 +276,9 @@ function getDb(): Promise<IDBDatabase> {
         }
         if (!db.objectStoreNames.contains(TACTICS_PROGRESS_STORE_NAME)) {
           db.createObjectStore(TACTICS_PROGRESS_STORE_NAME, { keyPath: "id" });
+        }
+        if (!db.objectStoreNames.contains(REPERTOIRE_SYSTEMS_STORE_NAME)) {
+          db.createObjectStore(REPERTOIRE_SYSTEMS_STORE_NAME, { keyPath: "id" });
         }
       };
 
@@ -520,6 +561,33 @@ export async function clearNonForkTacticsPuzzles(): Promise<TacticsPuzzleItem[]>
   return keptForks;
 }
 
+/**
+ * Clears the entire database of tactics puzzles (both IndexedDB and localStorage).
+ */
+export async function clearAllTacticsPuzzles(): Promise<void> {
+  try {
+    const db = await getDb();
+    await new Promise<void>((resolve, reject) => {
+      const tx = db.transaction(TACTICS_STORE_NAME, "readwrite");
+      const store = tx.objectStore(TACTICS_STORE_NAME);
+      const req = store.clear();
+      req.onsuccess = () => resolve();
+      req.onerror = () => reject(req.error);
+    });
+  } catch {
+    // fallback
+  }
+
+  if (typeof window !== "undefined" && window.localStorage) {
+    try {
+      window.localStorage.removeItem(TACTICS_LS_KEY);
+    } catch {
+      // ignore
+    }
+  }
+}
+
+
 export async function getTacticsPuzzles(options?: {
   motif?: TacticalMotif;
   tier?: TacticalTierLevel;
@@ -611,64 +679,567 @@ export async function getTacticsPuzzles(options?: {
   return [];
 }
 
-export async function clearAllTacticsPuzzles(): Promise<void> {
-  if (typeof window !== "undefined" && window.localStorage) {
+export const DEFAULT_REPERTOIRE_SYSTEMS: RepertoireSystem[] = [
+  {
+    id: "pirc-defense",
+    name: "Pirc Defense",
+    color: "black",
+    ecoGroup: "B07-B09",
+    lichessOpeningTag: "pirc_defense",
+    description:
+      "Hypermodern defense for Black allowing White to claim the center before counter-attacking with ...g6, ...Bg7, and central pawn counter-strikes.",
+    createdAt: new Date().toISOString(),
+    variations: [
+      {
+        id: "pirc-classical",
+        systemId: "pirc-defense",
+        name: "Classical Variation",
+        eco: "B08",
+        lichessVariationTag: "pirc_defense_classical_variation",
+        createdAt: new Date().toISOString(),
+        lines: [
+          {
+            id: "pirc-central-pawn-fork",
+            variationId: "pirc-classical",
+            name: "Central Pawn Fork",
+            moves: ["e4", "d6", "d4", "Nf6"],
+            finalFen: "rnbqkb1r/ppp1pppp/3p1n2/8/3PP3/8/PPP2PPP/RNBQKBNR w KQkq - 1 3",
+            pgn: "1. e4 d6 2. d4 Nf6",
+            createdAt: new Date().toISOString(),
+            games: [],
+            endgames: [],
+          },
+        ],
+      },
+      {
+        id: "pirc-austrian",
+        systemId: "pirc-defense",
+        name: "Austrian Attack",
+        eco: "B09",
+        lichessVariationTag: "pirc_defense_austrian_attack",
+        createdAt: new Date().toISOString(),
+        lines: [],
+      },
+      {
+        id: "pirc-byrne",
+        systemId: "pirc-defense",
+        name: "Byrne Variation",
+        eco: "B07",
+        lichessVariationTag: "pirc_defense_byrne_variation",
+        createdAt: new Date().toISOString(),
+        lines: [],
+      },
+      {
+        id: "pirc-150-attack",
+        systemId: "pirc-defense",
+        name: "150 Attack / Bayonet",
+        eco: "B07",
+        createdAt: new Date().toISOString(),
+        lines: [],
+      },
+      {
+        id: "pirc-kholmov",
+        systemId: "pirc-defense",
+        name: "Kholmov System (4. Bc4)",
+        eco: "B07",
+        createdAt: new Date().toISOString(),
+        lines: [],
+      },
+      {
+        id: "pirc-roscher",
+        systemId: "pirc-defense",
+        name: "Roscher Gambit",
+        eco: "B07",
+        createdAt: new Date().toISOString(),
+        lines: [],
+      },
+    ],
+  },
+  {
+    id: "kings-indian-defense",
+    name: "King's Indian Defense",
+    color: "black",
+    ecoGroup: "E60-E99",
+    lichessOpeningTag: "kings_indian_defense",
+    description:
+      "Deep kingside dynamic counter-attacking system for Black with fianchettoed bishop on g7.",
+    createdAt: new Date().toISOString(),
+    variations: [
+      {
+        id: "kid-classical",
+        systemId: "kings-indian-defense",
+        name: "Classical System",
+        eco: "E91-E99",
+        lichessVariationTag: "kings_indian_defense_classical_variation",
+        createdAt: new Date().toISOString(),
+        lines: [],
+      },
+      {
+        id: "kid-samisch",
+        systemId: "kings-indian-defense",
+        name: "Sämisch Variation",
+        eco: "E81-E89",
+        lichessVariationTag: "kings_indian_defense_samisch_variation",
+        createdAt: new Date().toISOString(),
+        lines: [],
+      },
+      {
+        id: "kid-four-pawns",
+        systemId: "kings-indian-defense",
+        name: "Four Pawns Attack",
+        eco: "E76-E79",
+        lichessVariationTag: "kings_indian_defense_four_pawns_attack",
+        createdAt: new Date().toISOString(),
+        lines: [],
+      },
+      {
+        id: "kid-fianchetto",
+        systemId: "kings-indian-defense",
+        name: "Fianchetto Variation",
+        eco: "E62-E69",
+        createdAt: new Date().toISOString(),
+        lines: [],
+      },
+      {
+        id: "kid-averbakh",
+        systemId: "kings-indian-defense",
+        name: "Averbakh Variation",
+        eco: "E73-E75",
+        createdAt: new Date().toISOString(),
+        lines: [],
+      },
+    ],
+  },
+  {
+    id: "london-system",
+    name: "London System",
+    color: "white",
+    ecoGroup: "D00-D02",
+    lichessOpeningTag: "london_system",
+    description:
+      "Solid 1. d4 and 2. Bf4 system for White with Jobava attacking setups and Queen's Gambit transpositions.",
+    createdAt: new Date().toISOString(),
+    variations: [
+      {
+        id: "london-jobava",
+        systemId: "london-system",
+        name: "Jobava London (vs Pirc / KID)",
+        eco: "D00",
+        createdAt: new Date().toISOString(),
+        lines: [],
+      },
+      {
+        id: "london-anti-bf5",
+        systemId: "london-system",
+        name: "Anti-Copycat (vs 2...Bf5)",
+        eco: "D00",
+        createdAt: new Date().toISOString(),
+        lines: [],
+      },
+      {
+        id: "london-anti-nc6",
+        systemId: "london-system",
+        name: "Anti-c6 Knight (vs 2...Nc6)",
+        eco: "D00",
+        createdAt: new Date().toISOString(),
+        lines: [],
+      },
+      {
+        id: "london-classical",
+        systemId: "london-system",
+        name: "Classical London (vs 1...d5)",
+        eco: "D02",
+        createdAt: new Date().toISOString(),
+        lines: [],
+      },
+    ],
+  },
+];
+
+/**
+ * Retrieve all Repertoire Systems (3-tier hierarchy: System -> Variations -> Lines).
+ * Initializes with default templates for Pirc Defense, King's Indian, and London System.
+ */
+export async function getRepertoireSystems(): Promise<RepertoireSystem[]> {
+  let systems: RepertoireSystem[] | null = null;
+
+  // Try IndexedDB first
+  try {
+    const db = await getDb();
+    systems = await new Promise<RepertoireSystem[]>((resolve, reject) => {
+      const tx = db.transaction(REPERTOIRE_SYSTEMS_STORE_NAME, "readonly");
+      const store = tx.objectStore(REPERTOIRE_SYSTEMS_STORE_NAME);
+      const req = store.getAll();
+      req.onsuccess = () => resolve((req.result as RepertoireSystem[]) || []);
+      req.onerror = () => reject(req.error);
+    });
+  } catch {
+    // Ignore IndexedDB error, fall back to localStorage
+  }
+
+  // Fallback to localStorage if IndexedDB had 0 items
+  if ((!systems || systems.length === 0) && typeof window !== "undefined" && window.localStorage) {
     try {
-      window.localStorage.removeItem(TACTICS_LS_KEY);
+      const raw = window.localStorage.getItem(REPERTOIRE_SYSTEMS_LS_KEY);
+      if (raw) {
+        systems = JSON.parse(raw) as RepertoireSystem[];
+      }
     } catch {
-      // ignore
+      // Ignore
     }
   }
 
+  // If still empty, initialize with default templates
+  if (!systems || systems.length === 0) {
+    systems = JSON.parse(JSON.stringify(DEFAULT_REPERTOIRE_SYSTEMS));
+
+    // Migrate any previously saved user variation into Pirc Central Pawn Fork
+    if (typeof window !== "undefined" && window.localStorage) {
+      try {
+        const rawOld = window.localStorage.getItem(LS_BACKUP_KEY);
+        if (rawOld) {
+          const oldList: SavedVariation[] = JSON.parse(rawOld);
+          const oldPirc = oldList.find(
+            (v) =>
+              (v.moves && v.moves.join(" ").startsWith("e4 d6 d4 Nf6")) ||
+              v.name.toLowerCase().includes("pirc"),
+          );
+          if (oldPirc && systems) {
+            const pircSys = systems.find((s) => s.id === "pirc-defense");
+            const classicalVar = pircSys?.variations.find((v) => v.id === "pirc-classical");
+            const forkLine = classicalVar?.lines.find((l) => l.id === "pirc-central-pawn-fork");
+            if (forkLine) {
+              forkLine.games = oldPirc.games || [];
+              forkLine.endgames = oldPirc.endgames || [];
+              forkLine.finalFen = oldPirc.finalFen || forkLine.finalFen;
+              forkLine.moves = oldPirc.moves || forkLine.moves;
+              forkLine.pgn = oldPirc.pgn || forkLine.pgn;
+            }
+          }
+        }
+      } catch {
+        // Ignore
+      }
+    }
+
+    // Persist defaults directly without recursive call
+    if (systems) {
+      if (typeof window !== "undefined" && window.localStorage) {
+        try {
+          window.localStorage.setItem(REPERTOIRE_SYSTEMS_LS_KEY, JSON.stringify(systems));
+        } catch {
+          // Ignore
+        }
+      }
+      try {
+        const db = await getDb();
+        const tx = db.transaction(REPERTOIRE_SYSTEMS_STORE_NAME, "readwrite");
+        const store = tx.objectStore(REPERTOIRE_SYSTEMS_STORE_NAME);
+        for (const sys of systems) {
+          store.put(sys);
+        }
+      } catch {
+        // Ignore
+      }
+    }
+  }
+
+  return systems || DEFAULT_REPERTOIRE_SYSTEMS;
+}
+
+/**
+ * Save or update a complete Repertoire System.
+ */
+export async function saveRepertoireSystem(system: RepertoireSystem): Promise<void> {
   try {
     const db = await getDb();
-    const tx = db.transaction(TACTICS_STORE_NAME, "readwrite");
-    tx.objectStore(TACTICS_STORE_NAME).clear();
+    await new Promise<void>((resolve, reject) => {
+      const tx = db.transaction(REPERTOIRE_SYSTEMS_STORE_NAME, "readwrite");
+      const store = tx.objectStore(REPERTOIRE_SYSTEMS_STORE_NAME);
+      const req = store.put(system);
+      req.onsuccess = () => resolve();
+      req.onerror = () => reject(req.error);
+    });
   } catch {
-    // ignore
+    // Ignore
+  }
+
+  if (typeof window !== "undefined" && window.localStorage) {
+    try {
+      let systems: RepertoireSystem[] = [];
+      const raw = window.localStorage.getItem(REPERTOIRE_SYSTEMS_LS_KEY);
+      if (raw) {
+        systems = JSON.parse(raw);
+      }
+      const filtered = systems.filter((s) => s.id !== system.id);
+      filtered.push(system);
+      window.localStorage.setItem(REPERTOIRE_SYSTEMS_LS_KEY, JSON.stringify(filtered));
+    } catch {
+      // Ignore
+    }
   }
 }
 
 /**
- * Retrieve all saved variations from IndexedDB or localStorage fallback.
+ * Delete a Repertoire System.
  */
-export async function getAllVariations(): Promise<SavedVariation[]> {
+export async function deleteRepertoireSystem(systemId: string): Promise<void> {
   try {
     const db = await getDb();
-    return new Promise((resolve, reject) => {
+    await new Promise<void>((resolve, reject) => {
+      const tx = db.transaction(REPERTOIRE_SYSTEMS_STORE_NAME, "readwrite");
+      const store = tx.objectStore(REPERTOIRE_SYSTEMS_STORE_NAME);
+      const req = store.delete(systemId);
+      req.onsuccess = () => resolve();
+      req.onerror = () => reject(req.error);
+    });
+  } catch {
+    // Ignore
+  }
+
+  if (typeof window !== "undefined" && window.localStorage) {
+    try {
+      const raw = window.localStorage.getItem(REPERTOIRE_SYSTEMS_LS_KEY);
+      if (raw) {
+        const list: RepertoireSystem[] = JSON.parse(raw);
+        const filtered = list.filter((s) => s.id !== systemId);
+        window.localStorage.setItem(REPERTOIRE_SYSTEMS_LS_KEY, JSON.stringify(filtered));
+      }
+    } catch {
+      // Ignore
+    }
+  }
+}
+
+/**
+ * Add a new variation to a system.
+ */
+export async function addVariationToSystem(
+  systemId: string,
+  name: string,
+  eco = "",
+  lichessVariationTag = "",
+): Promise<RepertoireVariation> {
+  const systems = await getRepertoireSystems();
+  const sys = systems.find((s) => s.id === systemId);
+  if (!sys) throw new Error(`Repertoire system ${systemId} not found`);
+
+  const varId = `${systemId}-var-${Date.now().toString(36)}`;
+  const newVar: RepertoireVariation = {
+    id: varId,
+    systemId,
+    name: name.trim(),
+    eco: eco.trim() || undefined,
+    lichessVariationTag: lichessVariationTag.trim() || undefined,
+    lines: [],
+    createdAt: new Date().toISOString(),
+  };
+
+  sys.variations.push(newVar);
+  await saveRepertoireSystem(sys);
+  return newVar;
+}
+
+/**
+ * Delete a variation and all its lines from a system.
+ */
+export async function deleteVariationFromSystem(
+  systemId: string,
+  variationId: string,
+): Promise<void> {
+  const systems = await getRepertoireSystems();
+  const sys = systems.find((s) => s.id === systemId);
+  if (!sys) return;
+
+  sys.variations = sys.variations.filter((v) => v.id !== variationId);
+  await saveRepertoireSystem(sys);
+}
+
+/**
+ * Save or update a line inside a variation.
+ */
+export async function saveLineToVariation(
+  systemId: string,
+  variationId: string,
+  lineData: {
+    name: string;
+    moves: string[];
+    finalFen: string;
+    pgn: string;
+    id?: string;
+    games?: ScrapedGame[];
+    endgames?: PracticalEndgameTarget[];
+  },
+): Promise<RepertoireLine> {
+  const systems = await getRepertoireSystems();
+  const sys = systems.find((s) => s.id === systemId);
+  if (!sys) throw new Error(`System ${systemId} not found`);
+
+  const v = sys.variations.find((item) => item.id === variationId);
+  if (!v) throw new Error(`Variation ${variationId} not found`);
+
+  const lineId = lineData.id || `line-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 6)}`;
+  const existingLineIdx = v.lines.findIndex((l) => l.id === lineId);
+
+  const line: RepertoireLine = {
+    id: lineId,
+    variationId,
+    name: lineData.name.trim(),
+    moves: lineData.moves,
+    finalFen: lineData.finalFen,
+    pgn: lineData.pgn,
+    createdAt: existingLineIdx >= 0 ? v.lines[existingLineIdx].createdAt : new Date().toISOString(),
+    games: lineData.games || (existingLineIdx >= 0 ? v.lines[existingLineIdx].games : []),
+    endgames: lineData.endgames || (existingLineIdx >= 0 ? v.lines[existingLineIdx].endgames : []),
+  };
+
+  if (existingLineIdx >= 0) {
+    v.lines[existingLineIdx] = line;
+  } else {
+    v.lines.push(line);
+  }
+
+  await saveRepertoireSystem(sys);
+  return line;
+}
+
+/**
+ * Delete a line from a variation.
+ */
+export async function deleteLineFromVariation(
+  systemId: string,
+  variationId: string,
+  lineId: string,
+): Promise<void> {
+  const systems = await getRepertoireSystems();
+  const sys = systems.find((s) => s.id === systemId);
+  if (!sys) return;
+
+  const v = sys.variations.find((item) => item.id === variationId);
+  if (!v) return;
+
+  v.lines = v.lines.filter((l) => l.id !== lineId);
+  await saveRepertoireSystem(sys);
+}
+
+/**
+ * Retrieve all saved variations from the 3-tier hierarchy or legacy fallback.
+ * Automatically projects RepertoireLines into SavedVariation format for 100% backward compatibility.
+ */
+export async function getAllVariations(): Promise<SavedVariation[]> {
+  const result: SavedVariation[] = [];
+  const seenIds = new Set<string>();
+
+  // 1. Gather all lines from 3-tier hierarchy
+  try {
+    const systems = await getRepertoireSystems();
+    for (const sys of systems) {
+      for (const v of sys.variations) {
+        for (const l of v.lines) {
+          if (!seenIds.has(l.id)) {
+            seenIds.add(l.id);
+            result.push({
+              id: l.id,
+              name: `${sys.name}: ${v.name} — ${l.name}`,
+              eco: v.eco || sys.ecoGroup,
+              openingName: sys.name,
+              finalFen: l.finalFen,
+              moves: l.moves,
+              pgn: l.pgn,
+              color: sys.color,
+              perspective: sys.color,
+              createdAt: l.createdAt,
+              gameCount: l.games?.length || 0,
+              games: l.games || [],
+              endgames: l.endgames || [],
+            });
+          }
+        }
+      }
+    }
+  } catch {
+    // Ignore
+  }
+
+  // 2. Merge legacy variations from IndexedDB
+  try {
+    const db = await getDb();
+    const legacyVars = await new Promise<SavedVariation[]>((resolve, reject) => {
       const transaction = db.transaction(STORE_NAME, "readonly");
       const store = transaction.objectStore(STORE_NAME);
       const request = store.getAll();
 
       request.onsuccess = () => {
-        const results = (request.result as SavedVariation[]) || [];
-        // Sort newest first
-        results.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
-        resolve(results);
+        resolve((request.result as SavedVariation[]) || []);
       };
       request.onerror = () => reject(request.error);
     });
-  } catch {
-    // Fallback to localStorage
-    if (typeof window !== "undefined" && window.localStorage) {
-      try {
-        const raw = window.localStorage.getItem(LS_BACKUP_KEY);
-        if (raw) {
-          return JSON.parse(raw) as SavedVariation[];
-        }
-      } catch {
-        // Ignore parse errors
+
+    for (const v of legacyVars) {
+      if (!seenIds.has(v.id)) {
+        seenIds.add(v.id);
+        result.push(v);
       }
     }
-    return [];
+  } catch {
+    // Ignore
   }
+
+  // 3. Merge legacy variations from localStorage backup
+  if (typeof window !== "undefined" && window.localStorage) {
+    try {
+      const raw = window.localStorage.getItem(LS_BACKUP_KEY);
+      if (raw) {
+        const lsVars = JSON.parse(raw) as SavedVariation[];
+        for (const v of lsVars) {
+          if (!seenIds.has(v.id)) {
+            seenIds.add(v.id);
+            result.push(v);
+          }
+        }
+      }
+    } catch {
+      // Ignore parse errors
+    }
+  }
+
+  result.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+  return result;
 }
 
 /**
- * Save or update a variation. Also writes lightweight metadata to localStorage for instant SSR.
+ * Save or update a variation. Also syncs games & endgames back to corresponding RepertoireLine.
  */
 export async function saveVariationRecord(v: SavedVariation): Promise<void> {
-  // Sync to IndexedDB
+  // Sync to 3-tier RepertoireSystem hierarchy if matching line exists
+  try {
+    const systems = await getRepertoireSystems();
+    let updatedSystem: RepertoireSystem | null = null;
+
+    for (const sys of systems) {
+      for (const varItem of sys.variations) {
+        const line = varItem.lines.find((l) => l.id === v.id);
+        if (line) {
+          line.games = v.games;
+          line.endgames = v.endgames;
+          line.moves = v.moves || line.moves;
+          line.finalFen = v.finalFen || line.finalFen;
+          line.pgn = v.pgn || line.pgn;
+          updatedSystem = sys;
+          break;
+        }
+      }
+      if (updatedSystem) break;
+    }
+
+    if (updatedSystem) {
+      await saveRepertoireSystem(updatedSystem);
+    }
+  } catch {
+    // Ignore
+  }
+
+  // Sync to legacy IndexedDB
   try {
     const db = await getDb();
     await new Promise<void>((resolve, reject) => {
@@ -687,7 +1258,6 @@ export async function saveVariationRecord(v: SavedVariation): Promise<void> {
     try {
       const existing = await getAllVariations();
       const updated = [v, ...existing.filter((item) => item.id !== v.id)];
-      // Keep only first 5 games in localStorage snapshot to preserve quota
       const lightweightSnapshot = updated.map((item) => ({
         ...item,
         games: (item.games || []).slice(0, 5),
@@ -704,6 +1274,26 @@ export async function saveVariationRecord(v: SavedVariation): Promise<void> {
  * Permanently removes the variation and all associated scraped master games and endgames.
  */
 export async function deleteVariationRecord(id: string): Promise<void> {
+  // Remove from 3-tier RepertoireSystem hierarchy if present
+  try {
+    const systems = await getRepertoireSystems();
+    for (const sys of systems) {
+      let modified = false;
+      for (const varItem of sys.variations) {
+        const prevLen = varItem.lines.length;
+        varItem.lines = varItem.lines.filter((l) => l.id !== id);
+        if (varItem.lines.length !== prevLen) {
+          modified = true;
+        }
+      }
+      if (modified) {
+        await saveRepertoireSystem(sys);
+      }
+    }
+  } catch {
+    // Ignore
+  }
+
   try {
     const db = await getDb();
     await new Promise<void>((resolve, reject) => {
@@ -714,7 +1304,7 @@ export async function deleteVariationRecord(id: string): Promise<void> {
       request.onerror = () => reject(request.error);
     });
   } catch {
-    // Ignore IndexedDB error, proceed to localStorage cleanup
+    // Ignore
   }
 
   // Cascading purge of tactics belonging to this variation

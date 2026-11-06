@@ -29,10 +29,20 @@ import {
   getUserTelemetry,
   saveVariationRecord,
   updateUserTelemetry,
+  getRepertoireSystems,
+  saveRepertoireSystem,
+  deleteRepertoireSystem,
+  addVariationToSystem as addVarToSysStorage,
+  deleteVariationFromSystem as delVarFromSysStorage,
+  saveLineToVariation as saveLineToVarStorage,
+  deleteLineFromVariation as delLineFromVarStorage,
   type PracticalEndgameTarget,
   type SavedVariation,
   type ScrapedGame,
   type UserProgressTelemetry,
+  type RepertoireSystem,
+  type RepertoireVariation,
+  type RepertoireLine,
 } from "../services/repertoireStorage";
 import { identifyOpening } from "../utils/openingNames";
 
@@ -46,7 +56,15 @@ export interface EngineEval {
   depth: number;
 }
 
-export type { PracticalEndgameTarget, SavedVariation, ScrapedGame, UserProgressTelemetry };
+export type {
+  PracticalEndgameTarget,
+  SavedVariation,
+  ScrapedGame,
+  UserProgressTelemetry,
+  RepertoireSystem,
+  RepertoireVariation,
+  RepertoireLine,
+};
 
 interface ChessTrainingContextValue {
   telemetry: UserProgressTelemetry;
@@ -67,6 +85,40 @@ interface ChessTrainingContextValue {
   savedVariations: SavedVariation[];
   activeVariation: SavedVariation | null;
   setActiveVariation: (v: SavedVariation | null) => void;
+  repertoireSystems: RepertoireSystem[];
+  activeSystem: RepertoireSystem | null;
+  setActiveSystem: (s: RepertoireSystem | null) => void;
+  activeRepertoireVariation: RepertoireVariation | null;
+  setActiveRepertoireVariation: (v: RepertoireVariation | null) => void;
+  addRepertoireSystem: (
+    name: string,
+    color: "white" | "black",
+    ecoGroup?: string,
+    lichessTag?: string,
+    description?: string,
+  ) => Promise<RepertoireSystem>;
+  deleteRepertoireSystem: (systemId: string) => Promise<void>;
+  addVariationToSystem: (
+    systemId: string,
+    name: string,
+    eco?: string,
+    tag?: string,
+  ) => Promise<RepertoireVariation>;
+  deleteVariationFromSystem: (systemId: string, variationId: string) => Promise<void>;
+  saveLineToVariation: (
+    systemId: string,
+    variationId: string,
+    lineName: string,
+    customFen?: string,
+    customMoves?: string[],
+    customPgn?: string,
+  ) => Promise<RepertoireLine>;
+  deleteLineFromVariation: (
+    systemId: string,
+    variationId: string,
+    lineId: string,
+  ) => Promise<void>;
+  refreshRepertoireSystems: () => Promise<void>;
   makeMove: (from: string, to: string) => boolean;
   undo: () => void;
   reset: (fen?: string) => void;
@@ -106,11 +158,28 @@ export function ChessTrainingProvider({ children }: { children: ReactNode }) {
   const [lastClassification, setLastClassification] = useState<MoveClassification | null>(null);
   const [savedVariations, setSavedVariations] = useState<SavedVariation[]>([]);
   const [activeVariation, setActiveVariation] = useState<SavedVariation | null>(null);
+  const [repertoireSystems, setRepertoireSystems] = useState<RepertoireSystem[]>([]);
+  const [activeSystem, setActiveSystem] = useState<RepertoireSystem | null>(null);
+  const [activeRepertoireVariation, setActiveRepertoireVariation] = useState<RepertoireVariation | null>(null);
   const [telemetry, setTelemetry] = useState<UserProgressTelemetry>(getUserTelemetry());
 
-  // Hydrate saved variations & telemetry from IndexedDB / localStorage on client mount
+  // Hydrate saved variations, repertoire systems & telemetry from IndexedDB / localStorage on client mount
   useEffect(() => {
     setTelemetry(getUserTelemetry());
+    getRepertoireSystems()
+      .then((systems) => {
+        setRepertoireSystems(systems);
+        if (systems.length > 0) {
+          setActiveSystem(systems[0]);
+          if (systems[0].variations.length > 0) {
+            setActiveRepertoireVariation(systems[0].variations[0]);
+          }
+        }
+      })
+      .catch((err) => {
+        console.warn("Could not load repertoire systems from storage:", err);
+      });
+
     getAllVariations()
       .then((vars) => {
         setSavedVariations(vars);
@@ -328,6 +397,99 @@ export function ChessTrainingProvider({ children }: { children: ReactNode }) {
     [],
   );
 
+  const refreshRepertoireSystems = useCallback(async () => {
+    const systems = await getRepertoireSystems();
+    setRepertoireSystems(systems);
+    const vars = await getAllVariations();
+    setSavedVariations(vars);
+  }, []);
+
+  const addRepertoireSystem = useCallback(
+    async (
+      name: string,
+      color: "white" | "black",
+      ecoGroup = "",
+      lichessTag = "",
+      description = "",
+    ) => {
+      const newSys: RepertoireSystem = {
+        id: `sys-${Date.now().toString(36)}`,
+        name: name.trim(),
+        color,
+        ecoGroup: ecoGroup.trim(),
+        lichessOpeningTag: lichessTag.trim() || name.toLowerCase().replace(/[^a-z0-9]/g, "_"),
+        description: description.trim(),
+        variations: [],
+        createdAt: new Date().toISOString(),
+      };
+      await saveRepertoireSystem(newSys);
+      await refreshRepertoireSystems();
+      setActiveSystem(newSys);
+      return newSys;
+    },
+    [refreshRepertoireSystems],
+  );
+
+  const deleteRepertoireSystemCallback = useCallback(
+    async (systemId: string) => {
+      await deleteRepertoireSystem(systemId);
+      await refreshRepertoireSystems();
+      setActiveSystem((curr) => (curr?.id === systemId ? null : curr));
+    },
+    [refreshRepertoireSystems],
+  );
+
+  const addVariationToSystem = useCallback(
+    async (systemId: string, name: string, eco?: string, tag?: string) => {
+      const v = await addVarToSysStorage(systemId, name, eco, tag);
+      await refreshRepertoireSystems();
+      setActiveRepertoireVariation(v);
+      return v;
+    },
+    [refreshRepertoireSystems],
+  );
+
+  const deleteVariationFromSystem = useCallback(
+    async (systemId: string, variationId: string) => {
+      await delVarFromSysStorage(systemId, variationId);
+      await refreshRepertoireSystems();
+      setActiveRepertoireVariation((curr) => (curr?.id === variationId ? null : curr));
+    },
+    [refreshRepertoireSystems],
+  );
+
+  const saveLineToVariation = useCallback(
+    async (
+      systemId: string,
+      variationId: string,
+      lineName: string,
+      customFen?: string,
+      customMoves?: string[],
+      customPgn?: string,
+    ) => {
+      const moves = customMoves || gameRef.current.history();
+      const finalFen = customFen || gameRef.current.fen();
+      const pgn = customPgn || gameRef.current.pgn();
+      const line = await saveLineToVarStorage(systemId, variationId, {
+        name: lineName,
+        moves,
+        finalFen,
+        pgn,
+      });
+      await refreshRepertoireSystems();
+      return line;
+    },
+    [refreshRepertoireSystems],
+  );
+
+  const deleteLineFromVariation = useCallback(
+    async (systemId: string, variationId: string, lineId: string) => {
+      await delLineFromVarStorage(systemId, variationId, lineId);
+      await refreshRepertoireSystems();
+    },
+    [refreshRepertoireSystems],
+  );
+
   const requestEvaluation = useCallback(async () => {
     return runAnalysis(gameRef.current.fen());
   }, [runAnalysis]);
@@ -348,6 +510,18 @@ export function ChessTrainingProvider({ children }: { children: ReactNode }) {
       savedVariations,
       activeVariation,
       setActiveVariation,
+      repertoireSystems,
+      activeSystem,
+      setActiveSystem,
+      activeRepertoireVariation,
+      setActiveRepertoireVariation,
+      addRepertoireSystem,
+      deleteRepertoireSystem: deleteRepertoireSystemCallback,
+      addVariationToSystem,
+      deleteVariationFromSystem,
+      saveLineToVariation,
+      deleteLineFromVariation,
+      refreshRepertoireSystems,
       makeMove,
       undo,
       reset,
@@ -375,6 +549,16 @@ export function ChessTrainingProvider({ children }: { children: ReactNode }) {
       lastClassification,
       savedVariations,
       activeVariation,
+      repertoireSystems,
+      activeSystem,
+      activeRepertoireVariation,
+      addRepertoireSystem,
+      deleteRepertoireSystemCallback,
+      addVariationToSystem,
+      deleteVariationFromSystem,
+      saveLineToVariation,
+      deleteLineFromVariation,
+      refreshRepertoireSystems,
       makeMove,
       undo,
       reset,

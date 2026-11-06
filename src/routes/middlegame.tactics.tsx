@@ -21,6 +21,7 @@ import {
   Sparkles,
   Sword,
   Target,
+  Trash2,
   Trophy,
   Volume2,
   VolumeX,
@@ -52,12 +53,14 @@ import {
   type TacticalTierLevel,
   type TacticsGlobalProgress,
   type TacticsPuzzleItem,
+  type RepertoireSystem,
   getDefaultTacticsProgress,
   getTacticsProgress,
   saveTacticsProgress,
   getTacticsPuzzles,
   saveTacticsPuzzles,
   clearNonForkTacticsPuzzles,
+  clearAllTacticsPuzzles,
   recordTacticsAttempt,
   clearRemedialItem,
 } from "@/services/repertoireStorage";
@@ -96,24 +99,36 @@ export const Route = createFileRoute("/middlegame/tactics")({
 });
 
 function Tactics() {
-  const { savedVariations, activeVariation } = useChessTraining();
+  const { savedVariations, activeVariation, repertoireSystems, activeSystem } = useChessTraining();
 
-  // Selected Repertoire Line filter ('all' or specific variation id)
-  const [selectedVariationId, setSelectedVariationId] = useState<string>(() => {
-    return activeVariation?.id || (savedVariations.length > 0 ? savedVariations[0].id : "all");
+  // Selected Repertoire System ('all' or specific system ID like 'sys-pirc', 'sys-kid', 'sys-london')
+  const [selectedSystemId, setSelectedSystemId] = useState<string>(() => {
+    return activeSystem?.id || (repertoireSystems.length > 0 ? repertoireSystems[0].id : "sys-pirc");
   });
 
-  // Selected variation object
+  const selectedSystem = useMemo(() => {
+    if (selectedSystemId === "all") return null;
+    return repertoireSystems.find((s) => s.id === selectedSystemId) || null;
+  }, [repertoireSystems, selectedSystemId]);
+
+  // Selected Variation inside System ('all' or specific variation ID)
+  const [selectedVariationId, setSelectedVariationId] = useState<string>("all");
+
+  const availableVariations = useMemo(() => {
+    if (!selectedSystem) return [];
+    return selectedSystem.variations;
+  }, [selectedSystem]);
+
   const selectedVariation = useMemo(() => {
-    if (selectedVariationId === "all") return null;
-    return savedVariations.find((v) => v.id === selectedVariationId) || null;
-  }, [savedVariations, selectedVariationId]);
+    if (!selectedSystem || selectedVariationId === "all") return null;
+    return selectedSystem.variations.find((v) => v.id === selectedVariationId) || null;
+  }, [selectedSystem, selectedVariationId]);
 
   // Perspective: strictly "white" | "black"
-  // Defaults to the selected variation's color, or 'black' if opening is for Black
+  // Auto-locks to system's perspective (Black for Pirc/KID, White for London System)
   const [perspective, setPerspective] = useState<"white" | "black">(() => {
+    if (selectedSystem) return selectedSystem.color;
     if (activeVariation?.color) return activeVariation.color;
-    if (savedVariations.length > 0 && savedVariations[0]?.color) return savedVariations[0].color;
     return "black";
   });
 
@@ -133,73 +148,29 @@ function Tactics() {
   const [isPlayingSolution, setIsPlayingSolution] = useState(false);
   const autoAdvanceTimerRef = useRef<NodeJS.Timeout | null>(null);
 
-  // Hydrate progress and stored puzzles on mount (strictly filter out any legacy seed- placeholders)
+  // Hydrate progress and stored puzzles on mount (strictly filter out legacy seed- placeholders)
   useEffect(() => {
     getTacticsProgress().then((p) => setProgress(p));
-    getTacticsPuzzles().then(async (saved) => {
-      const realPuzzles = (saved || []).filter((p) => !p.id.startsWith("seed-"));
-
-      // Check if any non-fork puzzles are invalid (e.g. from Lichess batch or non-variation)
-      // or if any motif has fewer than 450 puzzles
-      const hasCorruptedNonForks = realPuzzles.some(
-        (p) =>
-          p.primaryMotif !== "Fork / Double Attack" &&
-          (p.id.startsWith("lichess-") || !p.id.startsWith("pirc-")),
-      );
-      const isMissingMotifs = TACTICAL_MOTIFS.some((m) => {
-        const count = realPuzzles.filter((p) => p.primaryMotif === m).length;
-        return count < 450;
-      });
-
-      if (hasCorruptedNonForks || isMissingMotifs || realPuzzles.length < 7200) {
-        // 1. Strictly preserve all existing verified Fork puzzles while purging any corrupted non-fork tactics
-        const keptForks = await clearNonForkTacticsPuzzles();
-
-        // 2. Prepare full 7,200 catalog:
-        // - For Fork: preserve user's existing correct forks; supplement with missing ones from PREPOPULATED_PIRC_TACTICS to reach exactly 450
-        const forkIdSet = new Set(keptForks.map((f) => f.id));
-        const neededForks = PREPOPULATED_PIRC_TACTICS.filter(
-          (p) => p.primaryMotif === "Fork / Double Attack" && !forkIdSet.has(p.id),
-        );
-        const supplementedForks = [...keptForks, ...neededForks].slice(0, 450);
-
-        // - For all other 15 motifs: populate all 450 puzzles each from the master Pirc catalog
-        const nonForkPuzzles = PREPOPULATED_PIRC_TACTICS.filter(
-          (p) => p.primaryMotif !== "Fork / Double Attack",
-        );
-
-        const targetVar = activeVariation || (savedVariations.length > 0 ? savedVariations[0] : null);
-        const activeVarId = targetVar?.id || "user-pirc";
-        const activeVarName = targetVar?.name || "Pirc Defense";
-
-        const fullCatalog = [...supplementedForks, ...nonForkPuzzles].map((p) => {
-          if (!p.openingVariationId || p.openingVariationId === "user-pirc") {
-            return {
-              ...p,
-              openingVariationId: activeVarId,
-              openingName: activeVarName,
-            };
-          }
-          return p;
-        });
-
-        await saveTacticsPuzzles(fullCatalog);
-        setAllPuzzles(fullCatalog);
-      } else {
-        setAllPuzzles(realPuzzles);
-      }
+    getTacticsPuzzles().then((saved) => {
+      const realPuzzles = (saved || []).filter((p) => !p.id.startsWith("seed-") && !p.isCheckmate);
+      setAllPuzzles(realPuzzles);
     });
-  }, [activeVariation, savedVariations]);
+  }, []);
 
-  // Sync perspective when opening variation selection changes
+  // System selection changes: auto-lock perspective to system color!
+  const handleSelectSystem = (sysId: string) => {
+    setSelectedSystemId(sysId);
+    setSelectedVariationId("all");
+    if (sysId !== "all") {
+      const sys = repertoireSystems.find((s) => s.id === sysId);
+      if (sys) setPerspective(sys.color);
+    }
+    setActivePuzzleIndex(0);
+    setIsRemedialFilterActive(false);
+  };
+
   const handleSelectVariation = (varId: string) => {
     setSelectedVariationId(varId);
-    if (varId !== "all") {
-      const v = savedVariations.find((item) => item.id === varId);
-      if (v?.color) {
-        setPerspective(v.color);
-      }
-    }
     setActivePuzzleIndex(0);
     setIsRemedialFilterActive(false);
   };
@@ -210,26 +181,59 @@ function Tactics() {
     setIsRemedialFilterActive(false);
   };
 
-  // Filter puzzles by perspective and opening line
+  const handleClearDatabase = async () => {
+    if (
+      !window.confirm(
+        "Are you sure you want to clear the entire tactics database? All stored tactics will be wiped so you can sync fresh, authentic puzzles for your repertoire.",
+      )
+    ) {
+      return;
+    }
+    await clearAllTacticsPuzzles();
+    const resetProg = getDefaultTacticsProgress();
+    await saveTacticsProgress(resetProg);
+    setProgress(resetProg);
+    setAllPuzzles([]);
+    setActivePuzzleIndex(0);
+    setIsRemedialFilterActive(false);
+    toast.success("Tactics Database Cleared", {
+      description: "Database reset. You can now ingest fresh authentic tactics.",
+    });
+  };
+
+  // Filter puzzles by perspective, repertoire system, and variation
   const perspectivePuzzles = useMemo(() => {
     return allPuzzles.filter((p) => {
       // Perspective isolation: Black puzzles MUST have Black to move and winning
       if (p.initialTurn !== perspective) return false;
-      if (
-        selectedVariationId !== "all" &&
-        p.openingVariationId &&
-        p.openingVariationId !== selectedVariationId &&
-        !(
-          p.openingVariationId === "user-pirc" &&
-          (selectedVariation?.name?.toLowerCase()?.includes("pirc") ||
-            selectedVariation?.moves?.join(" ")?.includes("d6"))
-        )
-      ) {
-        return false;
+      if (p.isCheckmate) return false;
+
+      // Filter by repertoire system
+      if (selectedSystem) {
+        const sysNameLower = selectedSystem.name.toLowerCase();
+        const pOpName = (p.openingName || "").toLowerCase();
+        const isSystemMatch =
+          !p.openingName ||
+          pOpName.includes(sysNameLower) ||
+          (sysNameLower.includes("pirc") && (pOpName.includes("pirc") || p.id.startsWith("pirc-"))) ||
+          (sysNameLower.includes("king") && (pOpName.includes("indian") || p.id.startsWith("kid-"))) ||
+          (sysNameLower.includes("london") && (pOpName.includes("london") || p.id.startsWith("london-")));
+
+        if (!isSystemMatch) return false;
+
+        // Filter by variation inside the system
+        if (selectedVariation) {
+          const varNameLower = selectedVariation.name.toLowerCase();
+          const isVarMatch =
+            p.openingVariationId === selectedVariation.id ||
+            pOpName.includes(varNameLower);
+          if (!isVarMatch) return false;
+        }
       }
-      return !p.isCheckmate;
+
+      return true;
     });
-  }, [allPuzzles, perspective, selectedVariationId, selectedVariation]);
+  }, [allPuzzles, perspective, selectedSystem, selectedVariation]);
 
   // Compute counts per motif for active perspective
   const puzzleCountsByMotif = useMemo(() => {
@@ -443,21 +447,23 @@ function Tactics() {
     try {
       const { newPuzzles, progress: finalProgress } = await syncMotifTacticsBatch(
         targetMotif,
-        selectedVariation,
+        selectedVariation ? ({ id: selectedVariation.id, name: selectedVariation.name, color: perspective } as any) : null,
         perspective,
         allPuzzles,
         (prog) => setSyncProgress({ ...prog }),
         50,
+        selectedSystem?.name,
+        selectedVariation?.name,
       );
 
       if (newPuzzles.length > 0) {
         await saveTacticsPuzzles(newPuzzles);
         const updatedAll = await getTacticsPuzzles();
-        const clean = updatedAll.filter((p) => !p.id.startsWith("seed-"));
+        const clean = updatedAll.filter((p) => !p.id.startsWith("seed-") && !p.isCheckmate);
         setAllPuzzles(clean);
         setActivePuzzleIndex(0);
         toast.success(`${targetMotif} Library Updated!`, {
-          description: `Added ${newPuzzles.length} verified ${perspective.toUpperCase()} tactics across levels.`,
+          description: `Added ${newPuzzles.length} verified ${perspective.toUpperCase()} tactics for ${selectedVariation ? selectedVariation.name : (selectedSystem?.name || "your repertoire")}.`,
         });
       } else {
         toast.info("Database Up to Date", {
@@ -480,7 +486,7 @@ function Tactics() {
     }
   };
 
-  // Sync all 16 canonical motifs sequentially for the selected variation
+  // Sync all 16 canonical motifs sequentially for the selected variation/system
   const handleSyncAllMotifs = async () => {
     setIsSyncing(true);
     setIsSyncModalOpen(true);
@@ -493,11 +499,13 @@ function Tactics() {
         setSelectedMotif(motif);
         const { newPuzzles, progress: finalProgress } = await syncMotifTacticsBatch(
           motif,
-          selectedVariation,
+          selectedVariation ? ({ id: selectedVariation.id, name: selectedVariation.name, color: perspective } as any) : null,
           perspective,
           currentPool,
           (prog) => setSyncProgress({ ...prog }),
           50,
+          selectedSystem?.name,
+          selectedVariation?.name,
         );
 
         if (newPuzzles.length > 0) {
@@ -510,7 +518,7 @@ function Tactics() {
       }
 
       toast.success("All 16 Motifs Synced!", {
-        description: `Successfully synchronized ${totalNew} verified tactics for ${selectedVariation?.name || "your repertoire"}.`,
+        description: `Successfully synchronized ${totalNew} verified tactics for ${selectedVariation ? selectedVariation.name : (selectedSystem?.name || "your repertoire")}.`,
       });
 
       const updatedProg = { ...progress, lastSyncTimestamp: new Date().toISOString() };
@@ -681,7 +689,7 @@ function Tactics() {
         title="Progressive Tactics Laboratory"
         description="Master opening-specific material combinations across 16 enforced motifs and 9 progressive difficulty tiers."
         right={
-          <div className="flex items-center gap-2">
+          <div className="flex flex-wrap items-center gap-2">
             <Button
               variant="default"
               size="sm"
@@ -704,6 +712,17 @@ function Tactics() {
               <RefreshCw className={cn("h-4 w-4 mr-1.5", isSyncing && "animate-spin")} />
               Sync All 16 Motifs
             </Button>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={handleClearDatabase}
+              disabled={isSyncing}
+              className="shadow-sm font-semibold border-destructive/40 text-destructive hover:bg-destructive/10"
+              title="Clear all stored tactics to sync fresh authentic library"
+            >
+              <Trash2 className="h-4 w-4 mr-1.5" />
+              Clear Database
+            </Button>
             {syncProgress && !isSyncing && (
               <Button
                 variant="outline"
@@ -721,25 +740,46 @@ function Tactics() {
       {/* Opening Repertoire & Perspective Control Bar */}
       <div className="rounded-2xl border border-border bg-card p-4 shadow-sm flex flex-wrap items-center justify-between gap-3">
         <div className="flex flex-wrap items-center gap-3">
-          {/* Repertoire Selector */}
+          {/* Repertoire System Selector */}
           <div className="flex items-center gap-2">
             <BookOpen className="h-4 w-4 text-primary shrink-0" />
             <span className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
-              Opening Line:
+              Opening:
             </span>
             <select
-              value={selectedVariationId}
-              onChange={(e) => handleSelectVariation(e.target.value)}
+              value={selectedSystemId}
+              onChange={(e) => handleSelectSystem(e.target.value)}
               className="rounded-lg border border-border bg-background px-3 py-1.5 text-xs font-medium focus:ring-1 focus:ring-primary shadow-sm"
             >
-              <option value="all">All Repertoire Lines</option>
-              {savedVariations.map((v) => (
-                <option key={v.id} value={v.id}>
-                  {v.name} ({v.color.toUpperCase()})
+              <option value="all">All Repertoires</option>
+              {repertoireSystems.map((s) => (
+                <option key={s.id} value={s.id}>
+                  {s.color === "black" ? "🛡️" : "👑"} {s.name} ({s.color.toUpperCase()})
                 </option>
               ))}
             </select>
           </div>
+
+          {/* Variation Selector (inside System) */}
+          {selectedSystem && (
+            <div className="flex items-center gap-2">
+              <span className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+                Variation:
+              </span>
+              <select
+                value={selectedVariationId}
+                onChange={(e) => handleSelectVariation(e.target.value)}
+                className="rounded-lg border border-border bg-background px-3 py-1.5 text-xs font-medium focus:ring-1 focus:ring-primary shadow-sm"
+              >
+                <option value="all">All {selectedSystem.name} Variations</option>
+                {availableVariations.map((v) => (
+                  <option key={v.id} value={v.id}>
+                    {v.name}
+                  </option>
+                ))}
+              </select>
+            </div>
+          )}
 
           {/* Perspective Toggle: White vs Black */}
           <div className="flex items-center gap-1 rounded-xl border border-border bg-muted/40 p-1">
@@ -1169,6 +1209,15 @@ function Tactics() {
                   >
                     <Zap className={cn("h-4 w-4 mr-2", isSyncing && "animate-spin")} />
                     {isSyncing ? "Syncing Motif..." : `Sync "${selectedMotif}" (Target: 450)`}
+                  </Button>
+                  <Button
+                    variant="outline"
+                    onClick={handleSyncAllMotifs}
+                    disabled={isSyncing}
+                    className="font-semibold shadow-sm border-primary/40 hover:bg-primary/10"
+                  >
+                    <RefreshCw className={cn("h-4 w-4 mr-2", isSyncing && "animate-spin")} />
+                    Sync All 16 Motifs
                   </Button>
                 </div>
               </div>
