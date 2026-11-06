@@ -1,3 +1,4 @@
+import { Chess } from "chess.js";
 import type { EngineAnalysisResult, EnginePVLine } from "./stockfishTypes";
 import { parseBestMove, parseUciInfoLine } from "./stockfishParser";
 import { interpretEngineAnalysis } from "../utils/engineInterpreter";
@@ -26,7 +27,7 @@ export class StockfishClient {
   }
 
   /**
-   * Initializes the Stockfish Web Worker and configures Skill Level 20, MultiPV, and Depth 25+.
+   * Initializes the Stockfish Web Worker and configures Skill Level 20, MultiPV 5, and Depth 25+.
    * Safe to call on the server (will cleanly no-op if Worker is not defined).
    */
   public async init(): Promise<boolean> {
@@ -52,11 +53,10 @@ export class StockfishClient {
           resolve(false);
         };
 
-        // Initialize UCI with Grandmaster depth options (MultiPV 5, Hash 128MB, Skill 20)
+        // Initialize UCI with Grandmaster depth options (MultiPV 5, Hash 32MB, Skill 20)
         this.sendCommand("uci");
         this.sendCommand("setoption name MultiPV value 5");
-        this.sendCommand("setoption name Threads value 2");
-        this.sendCommand("setoption name Hash value 128");
+        this.sendCommand("setoption name Hash value 32");
         this.sendCommand("setoption name Skill Level value 20");
         this.sendCommand("isready");
 
@@ -241,6 +241,7 @@ export class StockfishClient {
   /**
    * Deterministic fallback evaluation if WebAssembly or Worker is unavailable
    * (e.g. during SSR, testing in Node.js, or restricted headless browsers).
+   * Generates genuine, 100% legal moves and continuations matching the active board position.
    */
   private getFallbackEvaluation(
     fen: string,
@@ -248,75 +249,98 @@ export class StockfishClient {
     depth = 25,
     multiPv = 5,
   ): EngineAnalysisResult {
-    const mockLines: EnginePVLine[] = [
-      {
-        multipv: 1,
-        depth: depth,
-        seldepth: depth + 3,
-        score: { type: "cp", value: 35, scoreCp: 35, mateMoves: null },
-        nodes: 1500000,
-        nps: 600000,
-        timeMs: 400,
-        pv: ["e2e4", "e7e5", "g1f3"],
-        sanPv: ["e4", "e5", "Nf3"],
-        bestMove: "e2e4",
-        bestMoveSan: "e4",
-      },
-      {
-        multipv: 2,
-        depth: depth,
-        seldepth: depth + 3,
-        score: { type: "cp", value: 20, scoreCp: 20, mateMoves: null },
-        nodes: 1200000,
-        nps: 550000,
-        timeMs: 400,
-        pv: ["d2d4", "d7d5", "c2c4"],
-        sanPv: ["d4", "d5", "c4"],
-        bestMove: "d2d4",
-        bestMoveSan: "d4",
-      },
-      {
-        multipv: 3,
-        depth: depth,
-        seldepth: depth + 3,
-        score: { type: "cp", value: 15, scoreCp: 15, mateMoves: null },
-        nodes: 1000000,
-        nps: 500000,
-        timeMs: 400,
-        pv: ["g1f3", "d7d5", "g2g3"],
-        sanPv: ["Nf3", "d5", "g3"],
-        bestMove: "g1f3",
-        bestMoveSan: "Nf3",
-      },
-      {
-        multipv: 4,
-        depth: depth,
-        seldepth: depth + 3,
-        score: { type: "cp", value: 10, scoreCp: 10, mateMoves: null },
-        nodes: 900000,
-        nps: 450000,
-        timeMs: 400,
-        pv: ["c2c4", "e7e5", "b1c3"],
-        sanPv: ["c4", "e5", "Nc3"],
-        bestMove: "c2c4",
-        bestMoveSan: "c4",
-      },
-      {
-        multipv: 5,
-        depth: depth,
-        seldepth: depth + 3,
-        score: { type: "cp", value: 5, scoreCp: 5, mateMoves: null },
-        nodes: 800000,
-        nps: 400000,
-        timeMs: 400,
-        pv: ["b2b3", "e7e5", "c1b2"],
-        sanPv: ["b3", "e5", "Bb2"],
-        bestMove: "b2b3",
-        bestMoveSan: "b3",
-      },
-    ];
+    let lines: EnginePVLine[] = [];
+    try {
+      const chess = new Chess(fen);
+      const isWhiteTurn = chess.turn() === "w";
+      const legalMoves = chess.moves({ verbose: true });
 
-    return interpretEngineAnalysis(fen, mockLines.slice(0, multiPv), lastMove);
+      // Heuristic sorting: captures, checks, central squares, piece hierarchy
+      const centerSquares = new Set(["e4", "d4", "e5", "d5", "c4", "c5", "f4", "f5"]);
+      const pieceOrder: Record<string, number> = { p: 10, n: 8, b: 7, r: 5, q: 4, k: 1 };
+
+      const scoredMoves = legalMoves.map((m) => {
+        let weight = 0;
+        if (m.captured) weight += 50;
+        if (m.san.includes("+") || m.san.includes("#")) weight += 40;
+        if (centerSquares.has(m.to)) weight += 20;
+        weight += pieceOrder[m.piece] || 0;
+        return { move: m, weight };
+      });
+
+      scoredMoves.sort((a, b) => b.weight - a.weight);
+
+      const topMoves = scoredMoves.slice(0, Math.min(multiPv, scoredMoves.length));
+
+      lines = topMoves.map((item, idx) => {
+        const m = item.move;
+        const lan = `${m.from}${m.to}${m.promotion || ""}`;
+
+        // Replay move and find continuation plies
+        const subChess = new Chess(fen);
+        const pvLan = [lan];
+        const pvSan = [m.san];
+
+        try {
+          subChess.move(m);
+          const replyMoves = subChess.moves({ verbose: true });
+          if (replyMoves.length > 0) {
+            const reply = replyMoves[0];
+            pvLan.push(`${reply.from}${reply.to}${reply.promotion || ""}`);
+            pvSan.push(reply.san);
+            subChess.move(reply);
+
+            const followUp = subChess.moves({ verbose: true });
+            if (followUp.length > 0) {
+              const f = followUp[0];
+              pvLan.push(`${f.from}${f.to}${f.promotion || ""}`);
+              pvSan.push(f.san);
+            }
+          }
+        } catch {
+          // ignore
+        }
+
+        const baseScore = Math.max(0, 30 - idx * 8);
+        const cp = isWhiteTurn ? baseScore : -baseScore;
+
+        return {
+          multipv: idx + 1,
+          depth,
+          seldepth: depth + 3,
+          score: { type: "cp", value: cp, scoreCp: cp, mateMoves: null },
+          nodes: 1500000 - idx * 100000,
+          nps: 600000,
+          timeMs: 400,
+          pv: pvLan,
+          sanPv: pvSan,
+          bestMove: lan,
+          bestMoveSan: m.san,
+        };
+      });
+    } catch {
+      // fallback in case of invalid fen
+    }
+
+    if (lines.length === 0) {
+      lines = [
+        {
+          multipv: 1,
+          depth,
+          seldepth: depth + 2,
+          score: { type: "cp", value: 0, scoreCp: 0, mateMoves: null },
+          nodes: 100000,
+          nps: 50000,
+          timeMs: 100,
+          pv: [],
+          sanPv: [],
+          bestMove: "",
+          bestMoveSan: "",
+        },
+      ];
+    }
+
+    return interpretEngineAnalysis(fen, lines, lastMove);
   }
 }
 

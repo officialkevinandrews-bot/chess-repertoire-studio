@@ -16,17 +16,33 @@
 var Module = typeof Module !== "undefined" ? Module : {};
 Module = (function () {
   var queue = [];
-  onmessage = function (e) {
-    if (e.data == "quit") close();
-    else if (queue !== null) queue.push(e.data);
-    else Module.ccall("uci_command", "number", ["string"], [e.data]);
+  var messageHandler = function (e) {
+    var data = typeof e === "string" ? e : (e && e.data ? e.data : "");
+    if (data == "quit") {
+      if (typeof close === "function") close();
+    } else if (queue !== null) {
+      queue.push(data);
+    } else {
+      Module.ccall("uci_command", "number", ["string"], [data]);
+    }
   };
+  if (typeof self !== "undefined") {
+    self.onmessage = messageHandler;
+  }
+  try {
+    onmessage = messageHandler;
+  } catch (e) {}
+
   return {
     locateFile: function (file) {
       return file;
     },
     print: function (stdout) {
-      postMessage(stdout);
+      if (typeof postMessage === "function") {
+        postMessage(stdout);
+      } else if (typeof self !== "undefined" && typeof self.postMessage === "function") {
+        self.postMessage(stdout);
+      }
     },
     postRun: function () {
       for (var i = 0; i < queue.length; i++) {
