@@ -9,6 +9,7 @@ import {
 import { Chess } from "chess.js";
 import {
   DEFAULT_LICHESS_TOKEN,
+  DEFAULT_REPERTOIRE_SYSTEMS,
   deleteVariationRecord,
   getAllVariations,
   getStoredLichessToken,
@@ -16,6 +17,7 @@ import {
   type SavedVariation,
   type ScrapedGame,
 } from "../services/repertoireStorage";
+import { extractPawnDna } from "../utils/pawnStructureDna";
 
 describe("Phase 2: Opening Identification & Repertoire Scraper", () => {
   it("has permanent Lichess token configured by default", () => {
@@ -215,5 +217,44 @@ describe("Phase 2: Opening Identification & Repertoire Scraper", () => {
     expect(remainingGames.some((g) => g.id === "game-to-purge-1")).toBe(false);
     expect(remainingGames.some((g) => g.id === "game-to-purge-2")).toBe(false);
     expect(remainingEndgames.some((e) => e.id === "endgame-to-purge-1")).toBe(false);
+  });
+
+  it("installs King's Indian Attack for White with variations, ECO identification, and Pawn DNA", () => {
+    const kiaSys = DEFAULT_REPERTOIRE_SYSTEMS.find((s) => s.id === "kings-indian-attack");
+    expect(kiaSys).toBeDefined();
+    expect(kiaSys?.color).toBe("white");
+    expect(kiaSys?.ecoGroup).toBe("A07-A08");
+    expect(kiaSys?.lichessOpeningTag).toBe("kings_indian_attack");
+    expect(kiaSys?.variations.length).toBeGreaterThanOrEqual(6);
+
+    // Verify Fischer French KIA move order (1. e4 e6 2. d3 d5 3. Nd2)
+    const fischerFrench = identifyOpening(["e4", "e6", "d3", "d5", "Nd2"]);
+    expect(fischerFrench.eco).toBe("C00");
+    expect(fischerFrench.name).toContain("King's Indian Attack: French Variation");
+
+    // Verify Barcza / Yugoslav KIA move order (1. Nf3 d5 2. g3 Nf6 3. Bg2 c5 4. O-O Nc6 5. d3 e6 6. Nbd2)
+    const yugoslavKia = identifyOpening([
+      "Nf3",
+      "d5",
+      "g3",
+      "Nf6",
+      "Bg2",
+      "c5",
+      "O-O",
+      "Nc6",
+      "d3",
+      "e6",
+      "Nbd2",
+    ]);
+    expect(yugoslavKia.eco).toBe("A08");
+    expect(yugoslavKia.name).toContain("King's Indian Attack");
+
+    // Verify Pawn Structure DNA for KIA e5 Spearhead
+    const spearheadLine = kiaSys?.variations
+      .find((v) => v.id === "kia-yugoslav-spassky")
+      ?.lines.find((l) => l.id === "kia-e5-spearhead");
+    expect(spearheadLine).toBeDefined();
+    const dna = extractPawnDna(spearheadLine!.finalFen);
+    expect(dna.structureName).toBe("King's Indian Attack Spearhead (e5 Wedge)");
   });
 });

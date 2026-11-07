@@ -208,6 +208,28 @@ export const EMBEDDED_GM_MODEL_GAMES = [
     accuracyScore: 99,
     pgn: "1. e4 c5 2. Nf3 d6 3. d4 cxd4 4. Nxd4 Nf6 5. Nc3 g6 6. Be3 Bg7 7. f3 O-O 8. Qd2 Nc6 9. Bc4 Bd7 10. O-O-O Rc8 11. Bb3 Ne5 12. h4 h5 13. Bg5 Rc5 14. Kb1 b5 15. g4 hxg4 16. f4 Nc4 17. Qd3 Nh5 18. f5 Ne5 19. Qe3 Nc4 20. Qe1 a5 21. Nd5 Re8 22. fxg6 fxg6 23. a4 bxa4 24. Ba2 Qb8 25. Bc1 e6 26. Ne3 Nxe3 27. Qxe3 Kh7 28. Rhg1 e5 29. Nf5 gxf5 30. Qg5 Nf4 31. Bxf4 exf4 32. Qh5+ Bh6 33. Qf7+ Bg7 34. Qh5+ Bh6 35. Qf7+ Bg7 36. c3 Rxc3 37. Qh5+ Bh6 38. Qf7+ Bg7 39. Rd2 Rec8 40. Qh5+ Bh6 41. Qf7+ Bg7 42. Qxd7 R8c5 43. exf5 Qc7 44. Qxc7 Rxc7 45. bxc3 Rxc3 46. Rxg4 1-0",
   },
+  {
+    id: "gm-fischer-myagmarsuren-1967",
+    white: { name: "Fischer, Robert J", rating: 2780, title: "GM" },
+    black: { name: "Myagmarsuren, Lhamsuren", rating: 2420, title: "IM" },
+    winner: "white" as const,
+    year: 1967,
+    opening: "King's Indian Attack: Yugoslav / French Variation",
+    eco: "A07",
+    accuracyScore: 99,
+    pgn: "1. e4 e6 2. d3 d5 3. Nd2 Nf6 4. g3 c5 5. Bg2 Nc6 6. Ngf3 Be7 7. O-O O-O 8. e5 Nd7 9. Re1 b5 10. Nf1 b4 11. h4 a5 12. Bf4 a4 13. a3 bxa3 14. bxa3 Na5 15. Ne3 Ba6 16. Bh3 d4 17. Nf1 Nb6 18. Ng5 Nd5 19. Bd2 Bxg5 20. Bxg5 Qd7 21. Qh5 Rfc8 22. Nd2 Nc3 23. Bf6 Qe8 24. Ne4 g6 25. Qg5 Nxe4 26. Rxe4 c4 27. h5 cxd3 28. Rh4 Ra7 29. Bg2 dxc2 30. Qh6 Qf8 31. Qxh7+ 1-0",
+  },
+  {
+    id: "gm-fischer-kia-endgame-model-1970",
+    white: { name: "Fischer, Robert J", rating: 2785, title: "GM" },
+    black: { name: "Panno, Oscar", rating: 2580, title: "GM" },
+    winner: "white" as const,
+    year: 1970,
+    opening: "King's Indian Attack: Classical",
+    eco: "A08",
+    accuracyScore: 98,
+    pgn: "1. Nf3 d5 2. g3 Nf6 3. Bg2 c5 4. O-O Nc6 5. d3 e6 6. Nbd2 Be7 7. e4 O-O 8. Re1 dxe4 9. dxe4 e5 10. c3 Qc7 11. Qe2 Rd8 12. Nc4 Be6 13. Bg5 h6 14. Bxf6 Bxf6 15. Ne3 Ne7 16. Red1 Rxd1+ 17. Rxd1 Rd8 18. Rxd8+ Qxd8 19. Qb5 Qb6 20. Qxb6 axb6 21. a3 Bb3 22. Nd2 Be6 23. Nd5 Nxd5 24. exd5 Bd7 25. Nc4 Bd8 26. Nxe5 Be8 27. f4 f6 28. Nc4 Bc7 29. d6 Bd8 30. Bxb7 Bf7 31. Ne3 Kf8 32. Bd5 Bxd5 33. Nxd5 Ke8 34. Kf2 Kd7 35. Ke3 Kxd6 36. Ke4 g6 37. f5 g5 38. h4 gxh4 39. gxh4 h5 40. Nf4 1-0",
+  },
 ];
 
 /**

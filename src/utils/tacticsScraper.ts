@@ -523,12 +523,18 @@ export function generateOpeningTacticsPool(
   countNeeded: number,
 ): TacticsPuzzleItem[] {
   const items: TacticsPuzzleItem[] = [];
+  const isKia =
+    (variation?.openingName || variation?.name || "").toLowerCase().includes("attack") ||
+    (variation?.id || "").toLowerCase().includes("kia");
+
   const openingMoves =
     variation?.moves && variation.moves.length > 0
       ? variation.moves
       : perspective === "black"
         ? ["e4", "d6", "d4", "Nf6", "Nc3", "g6", "Nf3", "Bg7"]
-        : ["d4", "d5", "Bf4", "Nf6", "e3", "e6", "Nf3", "c5"];
+        : isKia
+          ? ["Nf3", "d5", "g3", "Nf6", "Bg2", "c5", "O-O", "Nc6", "d3", "e6", "Nbd2", "Be7", "e4", "O-O"]
+          : ["d4", "d5", "Bf4", "Nf6", "e3", "e6", "Nf3", "c5"];
 
   const baseId = variation?.id || "rep";
   const motifSlug = motif.replace(/[^a-zA-Z0-9]/g, "").slice(0, 5).toLowerCase();
@@ -712,6 +718,18 @@ export async function syncMotifTacticsBatch(
     else if (targetVarName.includes("austrian")) openingAngle = "pirc_defense_austrian_attack";
     else if (targetVarName.includes("byrne")) openingAngle = "pirc_defense_byrne_variation";
     else openingAngle = "pirc_defense";
+  } else if (
+    targetOpName.includes("king's indian attack") ||
+    targetOpName.includes("kings indian attack") ||
+    targetOpName.includes("kia")
+  ) {
+    if (targetVarName.includes("french")) openingAngle = "kings_indian_attack_french_variation";
+    else if (targetVarName.includes("sicilian")) openingAngle = "kings_indian_attack_sicilian_variation";
+    else if (targetVarName.includes("yugoslav") || targetVarName.includes("spassky"))
+      openingAngle = "kings_indian_attack_yugoslav_variation";
+    else if (targetVarName.includes("keres")) openingAngle = "kings_indian_attack_keres_variation";
+    else if (targetVarName.includes("symmetrical")) openingAngle = "kings_indian_attack_symmetrical_defense";
+    else openingAngle = "kings_indian_attack";
   } else if (targetOpName.includes("king's indian") || targetOpName.includes("kings indian")) {
     if (targetVarName.includes("classical")) openingAngle = "kings_indian_defense_classical_variation";
     else if (targetVarName.includes("samisch") || targetVarName.includes("sämisch")) openingAngle = "kings_indian_defense_samisch_variation";
@@ -861,6 +879,18 @@ export async function syncMotifTacticsBatch(
                 pThemes.some((t) => t.includes("pirc")) ||
                 (history.length >= 2 && history[0] === "e4" && history[1] === "d6");
               if (!isPirc) continue;
+            } else if (
+              opNameLower.includes("king's indian attack") ||
+              opNameLower.includes("kings indian attack") ||
+              opNameLower.includes("kia")
+            ) {
+              const isKia =
+                (g.pgn || "").toLowerCase().includes("g3") ||
+                pThemes.some((t) => t.includes("indian") || t.includes("kia")) ||
+                (history.length >= 3 &&
+                  ((history[0] === "Nf3" && history[2] === "g3") ||
+                    (history[0] === "e4" && history[2] === "d3")));
+              if (!isKia) continue;
             } else if (opNameLower.includes("king's indian") || opNameLower.includes("kings indian")) {
               const isKid =
                 (g.pgn || "").toLowerCase().includes("g6") ||

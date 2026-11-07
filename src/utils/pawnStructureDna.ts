@@ -141,6 +141,16 @@ function identifyStructureType(
     return "French Pawn Chain";
   }
 
+  // King's Indian Attack Spearhead (White e5 + d3 + g3, Black d5/e6)
+  if (w.e.includes(5) && w.d.includes(3) && w.g.includes(3) && (b.d.includes(5) || b.e.includes(6))) {
+    return "King's Indian Attack Spearhead (e5 Wedge)";
+  }
+
+  // King's Indian Attack / Reversed Indian Structure (White d3 + e4 + g3)
+  if (w.d.includes(3) && w.e.includes(4) && w.g.includes(3)) {
+    return "King's Indian Attack / Reversed Indian Structure";
+  }
+
   // Isolated Queen's Pawn (White d4 with no c or e pawns)
   if (w.d.length > 0 && w.c.length === 0 && w.e.length === 0) {
     return "Isolated Queen's Pawn (IQP)";

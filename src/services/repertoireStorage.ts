@@ -854,11 +854,135 @@ export const DEFAULT_REPERTOIRE_SYSTEMS: RepertoireSystem[] = [
       },
     ],
   },
+  {
+    id: "kings-indian-attack",
+    name: "King's Indian Attack",
+    color: "white",
+    ecoGroup: "A07-A08",
+    lichessOpeningTag: "kings_indian_attack",
+    description:
+      "Universal hypermodern attacking system for White (Nf3, g3, Bg2, O-O, d3, Nbd2, e4) popularized by Bobby Fischer to launch kingside pawn storms against French, Sicilian, Caro-Kann, and d5 setups.",
+    createdAt: new Date().toISOString(),
+    variations: [
+      {
+        id: "kia-french",
+        systemId: "kings-indian-attack",
+        name: "French Variation (vs 1...e6 & 2...d5)",
+        eco: "A07",
+        lichessVariationTag: "kings_indian_attack_french_variation",
+        createdAt: new Date().toISOString(),
+        lines: [
+          {
+            id: "kia-fischer-setup",
+            variationId: "kia-french",
+            name: "Fischer e4-d3-Nd2 Tabiya",
+            moves: [
+              "e4",
+              "e6",
+              "d3",
+              "d5",
+              "Nd2",
+              "Nf6",
+              "Ngf3",
+              "c5",
+              "g3",
+              "Nc6",
+              "Bg2",
+              "Be7",
+              "O-O",
+              "O-O",
+            ],
+            finalFen: "r1bq1rk1/pp2bppp/2n1pn2/2pp4/4P3/3P1NP1/PPPN1PBP/R1BQ1RK1 w - - 5 8",
+            pgn: "1. e4 e6 2. d3 d5 3. Nd2 Nf6 4. Ngf3 c5 5. g3 Nc6 6. Bg2 Be7 7. O-O O-O",
+            createdAt: new Date().toISOString(),
+            games: [],
+            endgames: [],
+          },
+        ],
+      },
+      {
+        id: "kia-yugoslav-spassky",
+        systemId: "kings-indian-attack",
+        name: "Yugoslav / Spassky System (vs ...d5 & ...c5)",
+        eco: "A08",
+        lichessVariationTag: "kings_indian_attack_yugoslav_variation",
+        createdAt: new Date().toISOString(),
+        lines: [
+          {
+            id: "kia-e5-spearhead",
+            variationId: "kia-yugoslav-spassky",
+            name: "e5 Kingside Spearhead (Barcza / Fischer)",
+            moves: [
+              "Nf3",
+              "d5",
+              "g3",
+              "Nf6",
+              "Bg2",
+              "c5",
+              "O-O",
+              "Nc6",
+              "d3",
+              "e6",
+              "Nbd2",
+              "Be7",
+              "e4",
+              "O-O",
+              "Re1",
+              "b5",
+              "e5",
+              "Nd7",
+            ],
+            finalFen: "r1bq1rk1/p2nbppp/2n1p3/1pppP3/8/3P1NP1/PPPN1PBP/R1BQR1K1 w - - 1 10",
+            pgn: "1. Nf3 d5 2. g3 Nf6 3. Bg2 c5 4. O-O Nc6 5. d3 e6 6. Nbd2 Be7 7. e4 O-O 8. Re1 b5 9. e5 Nd7",
+            createdAt: new Date().toISOString(),
+            games: [],
+            endgames: [],
+          },
+        ],
+      },
+      {
+        id: "kia-sicilian",
+        systemId: "kings-indian-attack",
+        name: "Sicilian Variation (vs 1...c5 & ...e6/...g6)",
+        eco: "B20",
+        lichessVariationTag: "kings_indian_attack_sicilian_variation",
+        createdAt: new Date().toISOString(),
+        lines: [],
+      },
+      {
+        id: "kia-caro-kann",
+        systemId: "kings-indian-attack",
+        name: "Caro-Kann / Slav Setup (vs ...c6 & ...d5)",
+        eco: "A07",
+        lichessVariationTag: "kings_indian_attack_caro_kann_variation",
+        createdAt: new Date().toISOString(),
+        lines: [],
+      },
+      {
+        id: "kia-keres",
+        systemId: "kings-indian-attack",
+        name: "Keres / Queen's Indian Setup (vs ...b6 / ...Bg4)",
+        eco: "A07",
+        lichessVariationTag: "kings_indian_attack_keres_variation",
+        createdAt: new Date().toISOString(),
+        lines: [],
+      },
+      {
+        id: "kia-symmetrical",
+        systemId: "kings-indian-attack",
+        name: "Symmetrical / Reversed Grünfeld (vs ...g6 & ...Bg7)",
+        eco: "A07",
+        lichessVariationTag: "kings_indian_attack_symmetrical_defense",
+        createdAt: new Date().toISOString(),
+        lines: [],
+      },
+    ],
+  },
 ];
 
 /**
  * Retrieve all Repertoire Systems (3-tier hierarchy: System -> Variations -> Lines).
- * Initializes with default templates for Pirc Defense, King's Indian, and London System.
+ * Initializes with default templates for Pirc Defense, King's Indian Defense, London System, and King's Indian Attack.
  */
 export async function getRepertoireSystems(): Promise<RepertoireSystem[]> {
   let systems: RepertoireSystem[] | null = null;
@@ -886,6 +1010,40 @@ export async function getRepertoireSystems(): Promise<RepertoireSystem[]> {
       }
     } catch {
       // Ignore
+    }
+  }
+
+  // Merge any newly introduced default systems (e.g. King's Indian Attack) for existing users
+  if (systems && systems.length > 0) {
+    let addedNewDefaults = false;
+    for (const defaultSys of DEFAULT_REPERTOIRE_SYSTEMS) {
+      const wasExplicitlyDeleted =
+        typeof window !== "undefined" &&
+        window.localStorage?.getItem(`chess_buddy_deleted_${defaultSys.id}`) === "true";
+      if (!wasExplicitlyDeleted && !systems.some((s) => s.id === defaultSys.id)) {
+        const cloned: RepertoireSystem = JSON.parse(JSON.stringify(defaultSys));
+        systems.push(cloned);
+        addedNewDefaults = true;
+      }
+    }
+    if (addedNewDefaults) {
+      if (typeof window !== "undefined" && window.localStorage) {
+        try {
+          window.localStorage.setItem(REPERTOIRE_SYSTEMS_LS_KEY, JSON.stringify(systems));
+        } catch {
+          // Ignore
+        }
+      }
+      try {
+        const db = await getDb();
+        const tx = db.transaction(REPERTOIRE_SYSTEMS_STORE_NAME, "readwrite");
+        const store = tx.objectStore(REPERTOIRE_SYSTEMS_STORE_NAME);
+        for (const sys of systems) {
+          store.put(sys);
+        }
+      } catch {
+        // Ignore
+      }
     }
   }
 
@@ -999,6 +1157,7 @@ export async function deleteRepertoireSystem(systemId: string): Promise<void> {
 
   if (typeof window !== "undefined" && window.localStorage) {
     try {
+      window.localStorage.setItem(`chess_buddy_deleted_${systemId}`, "true");
       const raw = window.localStorage.getItem(REPERTOIRE_SYSTEMS_LS_KEY);
       if (raw) {
         const list: RepertoireSystem[] = JSON.parse(raw);

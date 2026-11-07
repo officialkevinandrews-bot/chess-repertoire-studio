@@ -216,7 +216,11 @@ function Tactics() {
           !p.openingName ||
           pOpName.includes(sysNameLower) ||
           (sysNameLower.includes("pirc") && (pOpName.includes("pirc") || p.id.startsWith("pirc-"))) ||
-          (sysNameLower.includes("king") && (pOpName.includes("indian") || p.id.startsWith("kid-"))) ||
+          (sysNameLower.includes("attack") &&
+            (pOpName.includes("attack") || pOpName.includes("kia") || pOpName.includes("indian") || p.id.startsWith("kia-"))) ||
+          (sysNameLower.includes("defense") &&
+            sysNameLower.includes("king") &&
+            (pOpName.includes("indian") || p.id.startsWith("kid-"))) ||
           (sysNameLower.includes("london") && (pOpName.includes("london") || p.id.startsWith("london-")));
 
         if (!isSystemMatch) return false;

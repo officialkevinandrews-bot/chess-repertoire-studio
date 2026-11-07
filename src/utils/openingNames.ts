@@ -96,10 +96,104 @@ const OPENING_DATABASE: { moves: string[]; eco: string; name: string }[] = [
   { moves: ["d4", "Nf6"], eco: "A45", name: "Indian Defense" },
   { moves: ["d4", "d5"], eco: "D00", name: "Queen's Pawn Game" },
 
+  // Pirc Defense
+  {
+    moves: ["e4", "d6", "d4", "Nf6", "Nc3", "g6", "f4"],
+    eco: "B09",
+    name: "Pirc Defense: Austrian Attack",
+  },
+  {
+    moves: ["e4", "d6", "d4", "Nf6", "Nc3", "g6", "Nf3", "Bg7"],
+    eco: "B08",
+    name: "Pirc Defense: Classical Variation",
+  },
+  {
+    moves: ["e4", "d6", "d4", "Nf6", "Nc3", "g6", "Bg5"],
+    eco: "B07",
+    name: "Pirc Defense: Byrne Variation",
+  },
+  {
+    moves: ["e4", "d6", "d4", "Nf6"],
+    eco: "B07",
+    name: "Pirc Defense",
+  },
+
+  // King's Indian Attack (via 1. e4 and 1. Nf3 move orders)
+  {
+    moves: ["e4", "e6", "d3", "d5", "Nd2", "Nf6", "Ngf3", "c5", "g3"],
+    eco: "A08",
+    name: "King's Indian Attack: French / Fischer Variation",
+  },
+  {
+    moves: ["e4", "e6", "d3", "d5", "Nd2"],
+    eco: "C00",
+    name: "King's Indian Attack: French Variation",
+  },
+  {
+    moves: ["e4", "e6", "d3"],
+    eco: "C00",
+    name: "King's Indian Attack: vs French Setup",
+  },
+  {
+    moves: ["e4", "c5", "Nf3", "e6", "d3"],
+    eco: "B20",
+    name: "King's Indian Attack: Sicilian Variation",
+  },
+  {
+    moves: ["e4", "c5", "d3"],
+    eco: "B20",
+    name: "King's Indian Attack: vs Sicilian Setup",
+  },
+  {
+    moves: ["e4", "c6", "d3", "d5", "Nd2"],
+    eco: "B10",
+    name: "King's Indian Attack: Caro-Kann Variation",
+  },
+  {
+    moves: ["Nf3", "d5", "g3", "Nf6", "Bg2", "c5", "O-O", "Nc6", "d3", "e6", "Nbd2"],
+    eco: "A08",
+    name: "King's Indian Attack: Yugoslav / Spassky Variation",
+  },
+  {
+    moves: ["Nf3", "d5", "g3", "c5", "Bg2"],
+    eco: "A08",
+    name: "King's Indian Attack: Sicilian / Spassky Variation",
+  },
+  {
+    moves: ["Nf3", "d5", "g3", "Bg4"],
+    eco: "A07",
+    name: "King's Indian Attack: Keres Variation",
+  },
+  {
+    moves: ["Nf3", "d5", "g3", "Bf5"],
+    eco: "A07",
+    name: "King's Indian Attack: vs ...Bf5 Setup",
+  },
+  {
+    moves: ["Nf3", "Nf6", "g3", "g6", "Bg2", "Bg7", "O-O", "O-O", "d3"],
+    eco: "A07",
+    name: "King's Indian Attack: Symmetrical Variation",
+  },
+  {
+    moves: ["Nf3", "Nf6", "g3", "b6", "Bg2", "Bb7"],
+    eco: "A07",
+    name: "King's Indian Attack: Queen's Indian Setup",
+  },
+  {
+    moves: ["Nf3", "d5", "g3"],
+    eco: "A07",
+    name: "King's Indian Attack (Barcza System)",
+  },
+  {
+    moves: ["Nf3", "Nf6", "g3"],
+    eco: "A04",
+    name: "King's Indian Attack: Flexible Fianchetto",
+  },
+
   // Flank Openings
   { moves: ["c4", "e5"], eco: "A20", name: "English Opening: King's English" },
   { moves: ["c4"], eco: "A10", name: "English Opening" },
-  { moves: ["Nf3"], eco: "A04", name: "Réti Opening" },
+  { moves: ["Nf3"], eco: "A04", name: "Réti / King's Indian Attack" },
 ];
 
 /**
