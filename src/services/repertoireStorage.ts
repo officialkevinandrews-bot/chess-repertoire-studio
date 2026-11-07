@@ -873,27 +873,28 @@ export const DEFAULT_REPERTOIRE_SYSTEMS: RepertoireSystem[] = [
         createdAt: new Date().toISOString(),
         lines: [
           {
-            id: "kia-fischer-setup",
+            id: "kia-french-tabiya",
             variationId: "kia-french",
-            name: "Fischer e4-d3-Nd2 Tabiya",
+            name: "Fischer French Setup (1. Nf3 move order)",
             moves: [
-              "e4",
-              "e6",
-              "d3",
+              "Nf3",
               "d5",
-              "Nd2",
-              "Nf6",
-              "Ngf3",
-              "c5",
               "g3",
-              "Nc6",
+              "Nf6",
               "Bg2",
+              "e6",
+              "O-O",
               "Be7",
+              "d3",
               "O-O",
-              "O-O",
+              "Nbd2",
+              "c5",
+              "e4",
+              "Nc6",
+              "Re1",
             ],
-            finalFen: "r1bq1rk1/pp2bppp/2n1pn2/2pp4/4P3/3P1NP1/PPPN1PBP/R1BQ1RK1 w - - 5 8",
-            pgn: "1. e4 e6 2. d3 d5 3. Nd2 Nf6 4. Ngf3 c5 5. g3 Nc6 6. Bg2 Be7 7. O-O O-O",
+            finalFen: "r1bq1rk1/pp2bppp/2n1pn2/2pp4/4P3/3P1NP1/PPPN1PBP/R1BQR1K1 b - - 2 8",
+            pgn: "1. Nf3 d5 2. g3 Nf6 3. Bg2 e6 4. O-O Be7 5. d3 O-O 6. Nbd2 c5 7. e4 Nc6 8. Re1",
             createdAt: new Date().toISOString(),
             games: [],
             endgames: [],
@@ -938,6 +939,43 @@ export const DEFAULT_REPERTOIRE_SYSTEMS: RepertoireSystem[] = [
             games: [],
             endgames: [],
           },
+          {
+            id: "kia-fischer-storm",
+            variationId: "kia-yugoslav-spassky",
+            name: "Fischer Kingside Storm (h4-N1h2-Ng4)",
+            moves: [
+              "Nf3",
+              "d5",
+              "g3",
+              "Nf6",
+              "Bg2",
+              "c5",
+              "O-O",
+              "Nc6",
+              "d3",
+              "e6",
+              "Nbd2",
+              "Be7",
+              "e4",
+              "O-O",
+              "Re1",
+              "b5",
+              "e5",
+              "Nd7",
+              "Nf1",
+              "a5",
+              "h4",
+              "b4",
+              "Bf4",
+              "Ba6",
+              "N1h2",
+            ],
+            finalFen: "r2q1rk1/3nbppp/b1n1p3/p1ppP3/1p3B1P/3P1NP1/PPP2PBN/R2QR1K1 b - - 3 13",
+            pgn: "1. Nf3 d5 2. g3 Nf6 3. Bg2 c5 4. O-O Nc6 5. d3 e6 6. Nbd2 Be7 7. e4 O-O 8. Re1 b5 9. e5 Nd7 10. Nf1 a5 11. h4 b4 12. Bf4 Ba6 13. N1h2",
+            createdAt: new Date().toISOString(),
+            games: [],
+            endgames: [],
+          },
         ],
       },
       {
@@ -965,7 +1003,66 @@ export const DEFAULT_REPERTOIRE_SYSTEMS: RepertoireSystem[] = [
         eco: "A07",
         lichessVariationTag: "kings_indian_attack_keres_variation",
         createdAt: new Date().toISOString(),
-        lines: [],
+        lines: [
+          {
+            id: "kia-keres-h3",
+            variationId: "kia-keres",
+            name: "Keres System: Active h3 & Qe1 Plan",
+            moves: [
+              "Nf3",
+              "d5",
+              "g3",
+              "Nf6",
+              "Bg2",
+              "Bg4",
+              "O-O",
+              "Nbd7",
+              "d3",
+              "e6",
+              "Nbd2",
+              "Bd6",
+              "h3",
+              "Bh5",
+              "e4",
+              "O-O",
+              "Qe1",
+            ],
+            finalFen: "r2q1rk1/pppn1ppp/3bpn2/3p3b/4P3/3P1NPP/PPPN1PB1/R1B1QRK1 b - - 2 9",
+            pgn: "1. Nf3 d5 2. g3 Nf6 3. Bg2 Bg4 4. O-O Nbd7 5. d3 e6 6. Nbd2 Bd6 7. h3 Bh5 8. e4 O-O 9. Qe1",
+            createdAt: new Date().toISOString(),
+            games: [],
+            endgames: [],
+          },
+          {
+            id: "kia-keres-c3",
+            variationId: "kia-keres",
+            name: "Keres System: Positional c3 & Re1 Plan",
+            moves: [
+              "Nf3",
+              "d5",
+              "g3",
+              "Nf6",
+              "Bg2",
+              "Bg4",
+              "O-O",
+              "Nbd7",
+              "d3",
+              "e6",
+              "Nbd2",
+              "Bd6",
+              "c3",
+              "O-O",
+              "e4",
+              "c6",
+              "Re1",
+            ],
+            finalFen: "r2q1rk1/pp1n1ppp/2pbpn2/3p4/4P1b1/2PP1NP1/PP1N1PBP/R1BQR1K1 b - - 1 9",
+            pgn: "1. Nf3 d5 2. g3 Nf6 3. Bg2 Bg4 4. O-O Nbd7 5. d3 e6 6. Nbd2 Bd6 7. c3 O-O 8. e4 c6 9. Re1",
+            createdAt: new Date().toISOString(),
+            games: [],
+            endgames: [],
+          },
+        ],
       },
       {
         id: "kia-symmetrical",
@@ -1013,17 +1110,36 @@ export async function getRepertoireSystems(): Promise<RepertoireSystem[]> {
     }
   }
 
-  // Merge any newly introduced default systems (e.g. King's Indian Attack) for existing users
+  // Merge any newly introduced default systems or starter lines (e.g. King's Indian Attack) for existing users
   if (systems && systems.length > 0) {
     let addedNewDefaults = false;
     for (const defaultSys of DEFAULT_REPERTOIRE_SYSTEMS) {
       const wasExplicitlyDeleted =
         typeof window !== "undefined" &&
         window.localStorage?.getItem(`chess_buddy_deleted_${defaultSys.id}`) === "true";
-      if (!wasExplicitlyDeleted && !systems.some((s) => s.id === defaultSys.id)) {
+      if (wasExplicitlyDeleted) continue;
+
+      const existingSys = systems.find((s) => s.id === defaultSys.id);
+      if (!existingSys) {
         const cloned: RepertoireSystem = JSON.parse(JSON.stringify(defaultSys));
         systems.push(cloned);
         addedNewDefaults = true;
+      } else {
+        // Also ensure any newly added default variations or starter lines are populated
+        for (const defaultVar of defaultSys.variations) {
+          const existingVar = existingSys.variations.find((v) => v.id === defaultVar.id);
+          if (!existingVar) {
+            existingSys.variations.push(JSON.parse(JSON.stringify(defaultVar)));
+            addedNewDefaults = true;
+          } else {
+            for (const defaultLine of defaultVar.lines) {
+              if (!existingVar.lines.some((l) => l.id === defaultLine.id)) {
+                existingVar.lines.push(JSON.parse(JSON.stringify(defaultLine)));
+                addedNewDefaults = true;
+              }
+            }
+          }
+        }
       }
     }
     if (addedNewDefaults) {

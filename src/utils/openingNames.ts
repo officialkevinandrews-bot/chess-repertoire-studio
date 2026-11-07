@@ -150,14 +150,34 @@ const OPENING_DATABASE: { moves: string[]; eco: string; name: string }[] = [
     name: "King's Indian Attack: Caro-Kann Variation",
   },
   {
+    moves: ["Nf3", "d5", "g3", "Nf6", "Bg2", "c5", "O-O", "Nc6", "d3", "e6", "Nbd2", "Be7", "e4", "O-O", "Re1", "b5", "e5", "Nd7", "Nf1", "a5", "h4"],
+    eco: "A08",
+    name: "King's Indian Attack: Fischer Kingside Storm",
+  },
+  {
     moves: ["Nf3", "d5", "g3", "Nf6", "Bg2", "c5", "O-O", "Nc6", "d3", "e6", "Nbd2"],
     eco: "A08",
     name: "King's Indian Attack: Yugoslav / Spassky Variation",
   },
   {
+    moves: ["Nf3", "d5", "g3", "Nf6", "Bg2", "e6", "O-O", "Be7", "d3", "O-O", "Nbd2", "c5", "e4"],
+    eco: "A07",
+    name: "King's Indian Attack: French Setup (1. Nf3)",
+  },
+  {
     moves: ["Nf3", "d5", "g3", "c5", "Bg2"],
     eco: "A08",
     name: "King's Indian Attack: Sicilian / Spassky Variation",
+  },
+  {
+    moves: ["Nf3", "d5", "g3", "Nf6", "Bg2", "Bg4", "O-O", "Nbd7", "d3", "e6", "Nbd2", "Bd6", "h3"],
+    eco: "A07",
+    name: "King's Indian Attack: Keres Variation (Active h3 Plan)",
+  },
+  {
+    moves: ["Nf3", "d5", "g3", "Nf6", "Bg2", "Bg4", "O-O", "Nbd7", "d3", "e6", "Nbd2", "Bd6", "c3"],
+    eco: "A07",
+    name: "King's Indian Attack: Keres Variation (Solid c3 Plan)",
   },
   {
     moves: ["Nf3", "d5", "g3", "Bg4"],

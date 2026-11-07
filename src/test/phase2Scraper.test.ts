@@ -249,12 +249,44 @@ describe("Phase 2: Opening Identification & Repertoire Scraper", () => {
     expect(yugoslavKia.eco).toBe("A08");
     expect(yugoslavKia.name).toContain("King's Indian Attack");
 
-    // Verify Pawn Structure DNA for KIA e5 Spearhead
-    const spearheadLine = kiaSys?.variations
-      .find((v) => v.id === "kia-yugoslav-spassky")
-      ?.lines.find((l) => l.id === "kia-e5-spearhead");
+    // Verify Pawn Structure DNA for KIA e5 Spearhead & Fischer Kingside Storm
+    const yugoslavVar = kiaSys?.variations.find((v) => v.id === "kia-yugoslav-spassky");
+    const spearheadLine = yugoslavVar?.lines.find((l) => l.id === "kia-e5-spearhead");
     expect(spearheadLine).toBeDefined();
     const dna = extractPawnDna(spearheadLine!.finalFen);
     expect(dna.structureName).toBe("King's Indian Attack Spearhead (e5 Wedge)");
+
+    const stormLine = yugoslavVar?.lines.find((l) => l.id === "kia-fischer-storm");
+    expect(stormLine).toBeDefined();
+    expect(stormLine?.moves[0]).toBe("Nf3");
+    expect(stormLine?.moves).toContain("h4");
+    expect(stormLine?.moves).toContain("N1h2");
+
+    // Verify Keres setup has both h3 and c3 variations
+    const keresVar = kiaSys?.variations.find((v) => v.id === "kia-keres");
+    expect(keresVar).toBeDefined();
+    const h3Line = keresVar?.lines.find((l) => l.id === "kia-keres-h3");
+    const c3Line = keresVar?.lines.find((l) => l.id === "kia-keres-c3");
+    expect(h3Line).toBeDefined();
+    expect(c3Line).toBeDefined();
+    expect(h3Line?.moves).toContain("h3");
+    expect(c3Line?.moves).toContain("c3");
+
+    // Verify identification of Fischer storm and Keres h3/c3 plans
+    const stormId = identifyOpening([
+      "Nf3", "d5", "g3", "Nf6", "Bg2", "c5", "O-O", "Nc6", "d3", "e6",
+      "Nbd2", "Be7", "e4", "O-O", "Re1", "b5", "e5", "Nd7", "Nf1", "a5", "h4"
+    ]);
+    expect(stormId.name).toContain("Fischer Kingside Storm");
+
+    const keresH3Id = identifyOpening([
+      "Nf3", "d5", "g3", "Nf6", "Bg2", "Bg4", "O-O", "Nbd7", "d3", "e6", "Nbd2", "Bd6", "h3"
+    ]);
+    expect(keresH3Id.name).toContain("Active h3 Plan");
+
+    const keresC3Id = identifyOpening([
+      "Nf3", "d5", "g3", "Nf6", "Bg2", "Bg4", "O-O", "Nbd7", "d3", "e6", "Nbd2", "Bd6", "c3"
+    ]);
+    expect(keresC3Id.name).toContain("Solid c3 Plan");
   });
 });
