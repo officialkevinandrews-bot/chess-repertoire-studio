@@ -109,6 +109,11 @@ function OpeningCreator() {
     }
   }, [analysis, isEngineThinking, requestEvaluation]);
 
+  // Refresh repertoire systems on mount to ensure newly added defaults or lines are immediately visible
+  useEffect(() => {
+    refreshRepertoireSystems();
+  }, [refreshRepertoireSystems]);
+
   const [lineName, setLineName] = useState("");
   const [isScraping, setIsScraping] = useState(false);
   const [scraperStatus, setScraperStatus] = useState<ScraperProgress | null>(null);
@@ -453,14 +458,30 @@ function OpeningCreator() {
           })}
         </div>
 
-        <Button
-          size="sm"
-          variant="outline"
-          className="h-8 text-xs font-medium border-dashed border-primary/50 text-primary hover:bg-primary/10"
-          onClick={() => setIsAddingSystem(!isAddingSystem)}
-        >
-          <Plus className="h-3.5 w-3.5 mr-1" /> Add New Repertoire
-        </Button>
+        <div className="flex items-center gap-2">
+          <Button
+            size="sm"
+            variant="outline"
+            className="h-8 text-xs font-medium border-dashed border-primary/50 text-primary hover:bg-primary/10"
+            onClick={() => setIsAddingSystem(!isAddingSystem)}
+          >
+            <Plus className="h-3.5 w-3.5 mr-1" /> Add New Repertoire
+          </Button>
+          <Button
+            size="sm"
+            variant="ghost"
+            className="h-8 text-xs text-muted-foreground hover:text-foreground hover:bg-secondary/80"
+            onClick={async () => {
+              await refreshRepertoireSystems();
+              toast.success("Repertoires Synchronized", {
+                description: "Default openings (Pirc, King's Indian Defense, London, King's Indian Attack) refreshed.",
+              });
+            }}
+            title="Refresh and sync repertoire systems"
+          >
+            <RotateCcw className="h-3.5 w-3.5 mr-1" /> Sync Openings
+          </Button>
+        </div>
       </div>
 
       {/* Modal / Inline form to add new Repertoire System */}

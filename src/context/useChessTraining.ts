@@ -639,6 +639,11 @@ export function ChessTrainingProvider({ children }: { children: ReactNode }) {
   const refreshRepertoireSystems = useCallback(async () => {
     const systems = await getRepertoireSystems();
     setRepertoireSystems(systems);
+    setActiveSystem((prev) => {
+      if (!prev) return systems[0] || null;
+      const matched = systems.find((s) => s.id === prev.id);
+      return matched || systems[0] || null;
+    });
     const vars = await getAllVariations();
     setSavedVariations(vars);
   }, []);
