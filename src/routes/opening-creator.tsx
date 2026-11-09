@@ -5,9 +5,11 @@ import {
   BookOpen,
   ChevronDown,
   ChevronRight,
+  Database,
   FlipVertical2,
   FolderPlus,
   GitBranch,
+  Layers,
   Loader2,
   Plus,
   RotateCcw,
@@ -17,12 +19,15 @@ import {
   Sword,
   Trash2,
   Undo2,
+  Zap,
 } from "lucide-react";
 import { toast } from "sonner";
+import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { ChessBoard, type BoardArrow } from "@/components/chess/ChessBoard";
 import { EngineLineExplorer } from "@/components/chess/EngineLineExplorer";
+import { OpeningExplorerPanel } from "@/components/chess/OpeningExplorerPanel";
 import {
   DataSourceBadge,
   EngineAnalysisPanel,
@@ -41,6 +46,15 @@ import {
 } from "@/context/useChessTraining";
 import { identifyOpening } from "@/utils/openingNames";
 import { scrapeGamesForVariation, type ScraperProgress } from "@/utils/lichessScraper";
+import {
+  fetchOpeningExplorer,
+  ALL_RATING_TIERS,
+  ALL_SPEEDS,
+  type DatabaseMode,
+  type RatingTier,
+  type GameSpeed,
+  type ExplorerPositionResult,
+} from "@/services/openingExplorer";
 
 export const Route = createFileRoute("/opening-creator")({
   head: () => ({
@@ -139,8 +153,52 @@ function OpeningCreator() {
   // Accordion expanded variations
   const [expandedVarIds, setExpandedVarIds] = useState<Record<string, boolean>>({});
 
+  // Opening Explorer & Game Frequency Database State
+  const [layoutView, setLayoutView] = useState<"split" | "engine" | "explorer">("split");
+  const [explorerMode, setExplorerMode] = useState<DatabaseMode>("all");
+  const [selectedRatings, setSelectedRatings] = useState<RatingTier[]>([...ALL_RATING_TIERS]);
+  const [selectedSpeeds, setSelectedSpeeds] = useState<GameSpeed[]>([...ALL_SPEEDS]);
+  const [explorerData, setExplorerData] = useState<ExplorerPositionResult | null>(null);
+  const [isExplorerLoading, setIsExplorerLoading] = useState(false);
+
   // Auto-detect opening and ECO from moves played
   const recognized = useMemo(() => identifyOpening(history), [history]);
+
+  // Query Opening Explorer whenever FEN, database mode, rating tiers, or speeds change
+  useEffect(() => {
+    let isMounted = true;
+    const controller = new AbortController();
+
+    async function loadExplorerData() {
+      setIsExplorerLoading(true);
+      try {
+        const data = await fetchOpeningExplorer({
+          fen,
+          mode: explorerMode,
+          ratings: selectedRatings,
+          speeds: selectedSpeeds,
+          engineLines: analysis?.lines,
+          signal: controller.signal,
+        });
+        if (isMounted && data) {
+          setExplorerData(data);
+        }
+      } catch {
+        // Ignored if cancelled
+      } finally {
+        if (isMounted) {
+          setIsExplorerLoading(false);
+        }
+      }
+    }
+
+    loadExplorerData();
+
+    return () => {
+      isMounted = false;
+      controller.abort();
+    };
+  }, [fen, explorerMode, selectedRatings, selectedSpeeds, analysis?.lines]);
 
   // Sync orientation whenever active system changes
   useEffect(() => {
@@ -278,6 +336,109 @@ function OpeningCreator() {
   const handleClearCache = async () => {
     await clearEvalCache();
     toast.success("Stockfish evaluation cache cleared. Evaluating fresh lines from scratch.");
+  };
+
+  const handleToggleRating = (tier: RatingTier) => {
+    setSelectedRatings((prev) => {
+      if (prev.includes(tier)) {
+        if (prev.length <= 1) return prev;
+        return prev.filter((r) => r !== tier);
+      }
+      return [...prev, tier];
+    });
+  };
+
+  const handleSelectAllRatings = () => {
+    setSelectedRatings((prev) => {
+      if (prev.length === ALL_RATING_TIERS.length) {
+        return ["1600", "1800", "2000", "2200", "2500"];
+      }
+      return [...ALL_RATING_TIERS];
+    });
+  };
+
+  const handleToggleSpeed = (speed: GameSpeed) => {
+    setSelectedSpeeds((prev) => {
+      if (prev.includes(speed)) {
+        if (prev.length <= 1) return prev;
+        return prev.filter((s) => s !== speed);
+      }
+      return [...prev, speed];
+    });
+  };
+
+  const handlePlayExplorerMove = (san: string, uci: string) => {
+    if (uci && uci.length >= 4) {
+      const from = uci.slice(0, 2);
+      const to = uci.slice(2, 4);
+      const ok = makeMove(from, to);
+      if (!ok) {
+        loadMoves([...history, san]);
+      }
+    } else {
+      loadMoves([...history, san]);
+    }
+    toast.success(`Played ${san} on the board`);
+  };
+
+  const handleSaveExplorerBranch = async (san: string, uci: string) => {
+    if (!activeSystem || !activeRepertoireVariation) {
+      toast.error("Please select an Opening System and Variation first.");
+      return;
+    }
+
+    // Play move onto the board
+    if (uci && uci.length >= 4) {
+      const from = uci.slice(0, 2);
+      const to = uci.slice(2, 4);
+      const ok = makeMove(from, to);
+      if (!ok) loadMoves([...history, san]);
+    } else {
+      loadMoves([...history, san]);
+    }
+
+    const updatedMoves = [...history, san];
+    const branchName = `${activeRepertoireVariation.name}: Branch ${san}`;
+
+    try {
+      const newLine = await saveLineToVariation(
+        activeSystem.id,
+        activeRepertoireVariation.id,
+        branchName,
+        undefined,
+        updatedMoves,
+      );
+      setEditingLineId(newLine.id);
+      setLineName(newLine.name);
+      await refreshRepertoireSystems();
+      toast.success(`Branched line "${newLine.name}" saved!`, {
+        description: `Added ${san} as a new branch under ${activeRepertoireVariation.name}.`,
+      });
+    } catch (err) {
+      console.error("Save branch error:", err);
+      toast.error("Failed to save branch line.");
+    }
+  };
+
+  const handleRefreshExplorer = async () => {
+    setIsExplorerLoading(true);
+    try {
+      const data = await fetchOpeningExplorer({
+        fen,
+        mode: explorerMode,
+        ratings: selectedRatings,
+        speeds: selectedSpeeds,
+        engineLines: analysis?.lines,
+      });
+      if (data) {
+        setExplorerData(data);
+        toast.success("Database frequency stats refreshed!");
+      }
+    } catch {
+      toast.error("Failed to refresh database stats.");
+    } finally {
+      setIsExplorerLoading(false);
+    }
   };
 
   const toggleExpand = (varId: string) => {
@@ -786,33 +947,107 @@ function OpeningCreator() {
               </div>
             }
           >
-            <EngineAnalysisPanel
-              analysis={analysis}
-              isThinking={isEngineThinking}
-              explanation={explanation}
-              engineMode={engineMode}
-              onSelectMode={setEngineMode}
-              candidateLinesCount={candidateLinesCount}
-              onSelectLinesCount={setCandidateLinesCount}
-              engineSource={engineSource}
-              isInfinitePaused={isInfinitePaused}
-              onPauseInfinite={pauseInfiniteAnalysis}
-              onResumeInfinite={resumeInfiniteAnalysis}
-              infiniteElapsedSeconds={infiniteElapsedSeconds}
-              selectedLineIndex={selectedLineIndex}
-              onSelectLine={(idx) => {
-                if (selectedLineIndex === idx) {
-                  setSelectedLineIndex(null);
-                  setPreviewStep(0);
-                } else {
-                  setSelectedLineIndex(idx);
-                  setPreviewStep(0);
-                }
-              }}
-              showArrows={showArrows}
-              onToggleArrows={() => setShowArrows(!showArrows)}
-              onClearCache={handleClearCache}
-            />
+            {/* Layout Mode Switcher Bar */}
+            <div className="flex items-center justify-between rounded-lg border border-border bg-card px-3 py-2 text-xs shadow-sm">
+              <span className="font-semibold text-muted-foreground uppercase tracking-wider text-[10px]">
+                Analysis Workspace
+              </span>
+              <div className="flex items-center rounded-lg border border-border bg-secondary/60 p-0.5 text-[11px] font-semibold">
+                <button
+                  type="button"
+                  onClick={() => setLayoutView("split")}
+                  className={cn(
+                    "flex items-center gap-1.5 rounded-md px-2.5 py-1 transition-all",
+                    layoutView === "split"
+                      ? "bg-primary text-primary-foreground font-bold shadow-xs"
+                      : "text-muted-foreground hover:text-foreground",
+                  )}
+                  title="Split View: Simultaneous Stockfish Engine and Opening Frequency Explorer"
+                >
+                  <Layers className="h-3 w-3" />
+                  <span>Split View</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setLayoutView("engine")}
+                  className={cn(
+                    "flex items-center gap-1.5 rounded-md px-2.5 py-1 transition-all",
+                    layoutView === "engine"
+                      ? "bg-primary text-primary-foreground font-bold shadow-xs"
+                      : "text-muted-foreground hover:text-foreground",
+                  )}
+                  title="Engine Focus: Expand Stockfish 19 Multi-PV analysis"
+                >
+                  <Zap className="h-3 w-3" />
+                  <span>Engine Focus</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setLayoutView("explorer")}
+                  className={cn(
+                    "flex items-center gap-1.5 rounded-md px-2.5 py-1 transition-all",
+                    layoutView === "explorer"
+                      ? "bg-primary text-primary-foreground font-bold shadow-xs"
+                      : "text-muted-foreground hover:text-foreground",
+                  )}
+                  title="Explorer Focus: Expand opening database frequency & win rates"
+                >
+                  <Database className="h-3 w-3" />
+                  <span>Explorer Focus</span>
+                </button>
+              </div>
+            </div>
+
+            {/* Stockfish Engine Analysis Panel */}
+            {(layoutView === "split" || layoutView === "engine") && (
+              <EngineAnalysisPanel
+                analysis={analysis}
+                isThinking={isEngineThinking}
+                explanation={explanation}
+                engineMode={engineMode}
+                onSelectMode={setEngineMode}
+                candidateLinesCount={candidateLinesCount}
+                onSelectLinesCount={setCandidateLinesCount}
+                engineSource={engineSource}
+                isInfinitePaused={isInfinitePaused}
+                onPauseInfinite={pauseInfiniteAnalysis}
+                onResumeInfinite={resumeInfiniteAnalysis}
+                infiniteElapsedSeconds={infiniteElapsedSeconds}
+                selectedLineIndex={selectedLineIndex}
+                onSelectLine={(idx) => {
+                  if (selectedLineIndex === idx) {
+                    setSelectedLineIndex(null);
+                    setPreviewStep(0);
+                  } else {
+                    setSelectedLineIndex(idx);
+                    setPreviewStep(0);
+                  }
+                }}
+                showArrows={showArrows}
+                onToggleArrows={() => setShowArrows(!showArrows)}
+                onClearCache={handleClearCache}
+              />
+            )}
+
+            {/* Opening Frequency Explorer Panel (Lichess Masters & Online) */}
+            {(layoutView === "split" || layoutView === "explorer") && (
+              <OpeningExplorerPanel
+                explorerData={explorerData}
+                isLoading={isExplorerLoading}
+                activeMode={explorerMode}
+                onSelectMode={setExplorerMode}
+                selectedRatings={selectedRatings}
+                onToggleRating={handleToggleRating}
+                onSelectAllRatings={handleSelectAllRatings}
+                selectedSpeeds={selectedSpeeds}
+                onToggleSpeed={handleToggleSpeed}
+                onPlayMove={handlePlayExplorerMove}
+                onSaveBranch={handleSaveExplorerBranch}
+                onRefresh={handleRefreshExplorer}
+                layoutView={layoutView}
+                onSelectLayoutView={setLayoutView}
+              />
+            )}
 
             <Panel title="Current Line Move List">
               <MoveList moves={history} />
