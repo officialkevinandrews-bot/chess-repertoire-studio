@@ -131,7 +131,7 @@ export class StockfishClient {
 
       const timer = setTimeout(cleanup, 200);
 
-      this.worker.addEventListener("message", onMsg);
+      this.worker?.addEventListener("message", onMsg);
       this.sendCommand("stop");
     });
   }

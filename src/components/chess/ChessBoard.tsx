@@ -15,7 +15,9 @@ interface Props {
   fen: string;
   orientation?: Orientation;
   /** Return true if the move was accepted. Omit for a read-only board. */
-  onMove?: (from: string, to: string) => boolean;
+  onMove?: (from: string, to: string) => boolean | Promise<boolean>;
+  /** Optional last-move highlight. */
+  lastMoveHighlight?: { from: string; to: string } | null;
   /** Squares to highlight, e.g. { e4: "threat" }. */
   highlights?: Record<string, "threat" | "good" | "info">;
   /** Colored candidate move arrows (e.g. MultiPV engine analysis) */
@@ -36,10 +38,16 @@ export function ChessBoard({
   highlights = {},
   arrows = [],
   onSquareClick,
+  lastMoveHighlight,
 }: Props) {
-  const squareStyles = Object.fromEntries(
+  const squareStyles: Record<string, { background: string }> = Object.fromEntries(
     Object.entries(highlights).map(([sq, k]) => [sq, { background: HL[k] }]),
   );
+  if (lastMoveHighlight) {
+    const bg = "color-mix(in oklab, var(--primary) 30%, transparent)";
+    squareStyles[lastMoveHighlight.from] ??= { background: bg };
+    squareStyles[lastMoveHighlight.to] ??= { background: bg };
+  }
   const placeholder = <div className="aspect-square w-full animate-pulse rounded-xl bg-muted" />;
   return (
     <div className="w-full overflow-hidden rounded-xl shadow-[var(--shadow-board)] ring-1 ring-border">
@@ -55,13 +63,21 @@ export function ChessBoard({
               arrowOptions: {
                 colors: {
                   default: "rgb(16, 185, 129)",
+                  shift: "rgb(59, 130, 246)",
+                  ctrl: "rgb(245, 158, 11)",
+                  alt: "rgb(239, 68, 68)",
+                  meta: "rgb(168, 85, 247)",
                 },
                 opacity: 0.85,
               },
               darkSquareStyle: { backgroundColor: "var(--board-dark)" },
               lightSquareStyle: { backgroundColor: "var(--board-light)" },
               onPieceDrop: ({ sourceSquare, targetSquare }) =>
-                onMove && targetSquare ? onMove(sourceSquare, targetSquare) : false,
+                {
+                if (!onMove || !targetSquare) return false;
+                const r = onMove(sourceSquare, targetSquare);
+                return typeof r === "boolean" ? r : true;
+              },
               onSquareClick: onSquareClick ? ({ square }) => onSquareClick(square) : undefined,
             }}
           />

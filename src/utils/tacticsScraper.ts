@@ -876,7 +876,7 @@ export async function syncMotifTacticsBatch(
             if (opNameLower.includes("pirc")) {
               const isPirc =
                 (g.pgn || "").toLowerCase().includes("d6") ||
-                pThemes.some((t) => t.includes("pirc")) ||
+                pThemes.some((t: string) => t.includes("pirc")) ||
                 (history.length >= 2 && history[0] === "e4" && history[1] === "d6");
               if (!isPirc) continue;
             } else if (
@@ -886,7 +886,7 @@ export async function syncMotifTacticsBatch(
             ) {
               const isKia =
                 (g.pgn || "").toLowerCase().includes("g3") ||
-                pThemes.some((t) => t.includes("indian") || t.includes("kia")) ||
+                pThemes.some((t: string) => t.includes("indian") || t.includes("kia")) ||
                 (history.length >= 3 &&
                   ((history[0] === "Nf3" && history[2] === "g3") ||
                     (history[0] === "e4" && history[2] === "d3")));
@@ -894,13 +894,13 @@ export async function syncMotifTacticsBatch(
             } else if (opNameLower.includes("king's indian") || opNameLower.includes("kings indian")) {
               const isKid =
                 (g.pgn || "").toLowerCase().includes("g6") ||
-                pThemes.some((t) => t.includes("indian")) ||
+                pThemes.some((t: string) => t.includes("indian")) ||
                 (history.length >= 2 && history[0] === "d4" && history[1] === "Nf6");
               if (!isKid) continue;
             } else if (opNameLower.includes("london")) {
               const isLondon =
                 (g.pgn || "").toLowerCase().includes("bf4") ||
-                pThemes.some((t) => t.includes("london")) ||
+                pThemes.some((t: string) => t.includes("london")) ||
                 (history.length >= 3 && history[0] === "d4" && (history[1] === "d5" || history[1] === "Nf6") && history[2] === "Bf4");
               if (!isLondon) continue;
             }

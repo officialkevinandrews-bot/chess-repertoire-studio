@@ -435,7 +435,7 @@ describe("Strict Move Legality & Cache Self-Healing", () => {
           reasoning: "Test",
         },
         motifs: [],
-        mateAnalysis: { isMate: false, mateInMoves: null, isMating: false },
+        mateAnalysis: { hasMate: false, category: "none", mateInMoves: null, sideMating: null, verifiedCheckmate: false, matingLineSan: [] },
         bestMoveSan: "c5",
         evalWhite: 0.2,
       },
