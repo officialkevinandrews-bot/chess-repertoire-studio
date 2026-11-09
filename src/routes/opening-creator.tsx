@@ -1026,6 +1026,7 @@ function OpeningCreator() {
                 showArrows={showArrows}
                 onToggleArrows={() => setShowArrows(!showArrows)}
                 onClearCache={handleClearCache}
+                explorerMoves={explorerData?.moves}
               />
             )}
 

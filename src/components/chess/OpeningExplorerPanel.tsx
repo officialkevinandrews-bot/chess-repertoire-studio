@@ -250,6 +250,42 @@ export function OpeningExplorerPanel({
         </div>
       </div>
 
+      {/* Active Filter Context Banner */}
+      <div className="flex flex-wrap items-center justify-between gap-1.5 rounded-lg bg-secondary/40 border border-border px-3 py-1.5 text-xs">
+        <div className="flex items-center gap-1.5 text-muted-foreground flex-wrap">
+          <span className="font-semibold text-foreground">Current Dataset:</span>
+          <span className="font-medium text-foreground">
+            {activeMode === "all" && "All Games (Masters + Online)"}
+            {activeMode === "masters" && "Masters (FIDE / OTB)"}
+            {activeMode === "lichess" && "Online Lichess"}
+          </span>
+          {activeMode !== "masters" && (
+            <>
+              <span className="text-muted-foreground/60">·</span>
+              <span className="text-primary font-mono text-[11px]">
+                {isAllRatingsSelected ? "Ratings: All (0-2500+)" : `Ratings: ${selectedRatings.join(", ")}`}
+              </span>
+              <span className="text-muted-foreground/60">·</span>
+              <span className="capitalize text-[11px]">{selectedSpeeds.join(", ")}</span>
+            </>
+          )}
+        </div>
+
+        <div className="flex items-center gap-2">
+          {explorerData && explorerData.totalGames < 50 && explorerData.totalGames > 0 && (
+            <span
+              className="inline-flex items-center gap-1 rounded bg-amber-500/15 border border-amber-500/30 px-2 py-0.5 text-[10px] font-semibold text-amber-400"
+              title="Less than 50 total games in the database matching this position and filter"
+            >
+              ⚠️ Small sample pool ({explorerData.totalGames.toLocaleString()} games)
+            </span>
+          )}
+          <span className="font-mono font-bold text-foreground text-xs">
+            {explorerData ? explorerData.totalGames.toLocaleString() : 0} games total
+          </span>
+        </div>
+      </div>
+
       {/* Filter Toggles Bar */}
       <div className="rounded-lg border border-border bg-card/60 p-2 space-y-2">
         <div className="flex flex-wrap items-center justify-between gap-2">
@@ -420,6 +456,15 @@ export function OpeningExplorerPanel({
         )}
       </div>
 
+      {/* Column Headers */}
+      <div className="flex items-center justify-between gap-2 px-3 py-1.5 text-[10px] font-bold uppercase tracking-wider text-muted-foreground border-b border-border/80 bg-secondary/30 rounded-md">
+        <div className="w-[105px] shrink-0">Move</div>
+        <div className="w-[160px] shrink-0">Games Count &amp; Play %</div>
+        {showWinLossBar && <div className="flex-1 min-w-[110px]">Results (W / D / B)</div>}
+        {showStockfishColumn && <div className="w-16 text-right shrink-0">Stockfish</div>}
+        <div className="w-14 text-right shrink-0">Action</div>
+      </div>
+
       {/* Move Frequency Table */}
       <div className="space-y-1 max-h-[380px] overflow-y-auto pr-1">
         {displayedMoves.length === 0 ? (
@@ -446,8 +491,8 @@ export function OpeningExplorerPanel({
                       : "border-border/70 bg-card/80 hover:border-border hover:bg-secondary/40",
                 )}
               >
-                {/* Left: Move SAN + Badges */}
-                <div className="flex items-center gap-2 min-w-[90px]">
+                {/* Column 1: Move SAN + Badges */}
+                <div className="flex items-center gap-1.5 w-[105px] shrink-0">
                   <button
                     type="button"
                     onClick={() => onPlayMove(m.san, m.uci)}
@@ -474,24 +519,38 @@ export function OpeningExplorerPanel({
                   )}
                 </div>
 
-                {/* Center: Games Count & Win/Draw/Loss Distribution */}
-                <div className="flex-1 flex flex-col justify-center min-w-0 px-1">
-                  <div className="flex items-center justify-between text-[11px] mb-1">
-                    <span className="font-mono text-muted-foreground truncate">
-                      {formatNumber(m.total)}{" "}
-                      <span className="text-[10px] text-muted-foreground/80">
-                        ({m.playedPercentage.toFixed(1)}%)
+                {/* Column 2: Games Count & Play % (Primary Column Showing Both!) */}
+                <div className="w-[160px] shrink-0 flex flex-col justify-center">
+                  <div className="flex items-center gap-1 font-mono">
+                    <span className="font-bold text-foreground text-xs">
+                      {m.total.toLocaleString()}
+                    </span>
+                    <span className="text-[10px] text-muted-foreground">games</span>
+                    {m.total < 25 && (
+                      <span
+                        className="rounded bg-amber-500/20 text-amber-300 border border-amber-500/30 px-1 text-[9px] font-semibold"
+                        title="Small sample pool for this move"
+                      >
+                        Low pool
                       </span>
-                    </span>
-                    <span className="font-mono text-[10px] text-muted-foreground">
-                      Score: {practicalScore}%
-                    </span>
+                    )}
                   </div>
+                  <div className="flex items-center gap-1 text-[11px] font-mono text-primary font-medium">
+                    <span>{m.playedPercentage.toFixed(1)}% of games</span>
+                  </div>
+                </div>
 
-                  {showWinLossBar && (
+                {/* Column 3: Win / Draw / Loss Distribution */}
+                {showWinLossBar && (
+                  <div className="flex-1 flex flex-col justify-center min-w-[110px] px-1">
+                    <div className="flex items-center justify-between text-[10px] font-mono mb-1 text-muted-foreground">
+                      <span>Win Rate</span>
+                      <span>Score: {practicalScore}%</span>
+                    </div>
+
                     <div
-                      className="flex h-2 w-full overflow-hidden rounded-full bg-secondary/80 text-[8px] font-mono"
-                      title={`White: ${m.whiteWinPct.toFixed(1)}% (${m.white}) | Draws: ${m.drawPct.toFixed(1)}% (${m.draws}) | Black: ${m.blackWinPct.toFixed(1)}% (${m.black})`}
+                      className="flex h-2.5 w-full overflow-hidden rounded-full bg-secondary/80 text-[8px] font-mono shadow-inner"
+                      title={`White: ${m.whiteWinPct.toFixed(1)}% (${m.white.toLocaleString()}) | Draws: ${m.drawPct.toFixed(1)}% (${m.draws.toLocaleString()}) | Black: ${m.blackWinPct.toFixed(1)}% (${m.black.toLocaleString()})`}
                     >
                       <div
                         style={{ width: `${m.whiteWinPct}%` }}
@@ -506,12 +565,12 @@ export function OpeningExplorerPanel({
                         className="bg-zinc-800 transition-all duration-300"
                       />
                     </div>
-                  )}
-                </div>
+                  </div>
+                )}
 
-                {/* Right: Stockfish Evaluation Column */}
+                {/* Column 4: Stockfish Evaluation Column */}
                 {showStockfishColumn && (
-                  <div className="w-16 text-right font-mono text-xs">
+                  <div className="w-16 text-right font-mono text-xs shrink-0">
                     {m.stockfishEval !== undefined ? (
                       <span
                         className={cn(
@@ -533,8 +592,8 @@ export function OpeningExplorerPanel({
                   </div>
                 )}
 
-                {/* Actions: Play & Branch Buttons */}
-                <div className="flex items-center gap-1 shrink-0">
+                {/* Column 5: Actions: Play & Branch Buttons */}
+                <div className="flex items-center gap-1 w-14 justify-end shrink-0">
                   <Button
                     size="sm"
                     variant="ghost"
@@ -589,3 +648,4 @@ export function OpeningExplorerPanel({
     </Panel>
   );
 }
+

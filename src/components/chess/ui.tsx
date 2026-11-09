@@ -216,6 +216,7 @@ export function EngineAnalysisPanel({
   showArrows = true,
   onToggleArrows,
   onClearCache,
+  explorerMoves,
 }: {
   analysis: import("@/engine/stockfishTypes").EngineAnalysisResult | null;
   isThinking?: boolean;
@@ -234,6 +235,7 @@ export function EngineAnalysisPanel({
   showArrows?: boolean;
   onToggleArrows?: () => void;
   onClearCache?: () => void;
+  explorerMoves?: import("@/services/openingExplorer").ExplorerMove[];
 }) {
   const formatTime = (secs: number) => {
     const hrs = Math.floor(secs / 3600);
@@ -503,6 +505,15 @@ export function EngineAnalysisPanel({
                     ? `#${line.score.mateMoves}`
                     : `${line.score.scoreCp > 0 ? "+" : ""}${(line.score.scoreCp / 100).toFixed(2)}`;
 
+                const matchingDbMove = explorerMoves?.find((m) => {
+                  const lineLan = line.pv?.[0];
+                  const lineSan = line.bestMoveSan || line.sanPv?.[0];
+                  return (
+                    (lineLan && lineLan.toLowerCase() === m.uci.toLowerCase()) ||
+                    (lineSan && lineSan === m.san)
+                  );
+                });
+
                 return (
                   <button
                     key={line.multipv}
@@ -532,6 +543,23 @@ export function EngineAnalysisPanel({
                     </div>
 
                     <div className="flex items-center gap-2 shrink-0 ml-2">
+                      {matchingDbMove && (
+                        <span className="hidden sm:inline-flex items-center gap-1 rounded bg-secondary/80 border border-border px-1.5 py-0.5 text-[10px] text-muted-foreground font-mono">
+                          <span className="font-bold text-foreground">
+                            {matchingDbMove.total.toLocaleString()}
+                          </span>
+                          <span>({matchingDbMove.playedPercentage.toFixed(1)}%)</span>
+                          {matchingDbMove.total < 25 && (
+                            <span className="rounded bg-amber-500/20 text-amber-300 border border-amber-500/30 px-1 text-[9px] font-semibold">
+                              Low pool
+                            </span>
+                          )}
+                          {matchingDbMove.isHiddenGem && (
+                            <span className="text-amber-400 font-bold ml-0.5">⚡ Gem</span>
+                          )}
+                        </span>
+                      )}
+
                       <span
                         className={cn(
                           "rounded px-1.5 py-0.5 text-[11px] font-bold border",
