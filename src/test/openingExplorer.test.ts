@@ -8,7 +8,7 @@ import {
   type ExplorerMove,
   ALL_RATING_TIERS,
 } from "@/services/openingExplorer";
-import type { EngineLine } from "@/engine/stockfishTypes";
+import type { EngineLine } from "@/services/openingExplorer";
 
 describe("Opening Explorer Service", () => {
   beforeEach(() => {

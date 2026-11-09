@@ -4,8 +4,25 @@
  * customizable rating/speed filters, and automatic "Hidden Gem" candidate detection.
  */
 
-import type { EngineLine } from "@/engine/stockfishTypes";
+import type { EnginePVLine, EvaluationScore } from "@/engine/stockfishTypes";
 import { getStoredLichessToken } from "./repertoireStorage";
+
+/** Engine line accepted by the explorer: score may be pawns (number) or a full EvaluationScore. */
+export type EngineLine = Partial<Omit<EnginePVLine, "score">> & {
+  score: number | EvaluationScore;
+  pv?: string[];
+};
+
+/** Normalize any engine score shape to pawns from White's perspective. */
+function scoreToPawns(score: unknown): number | undefined {
+  if (typeof score === "number") return Number.isFinite(score) ? score : undefined;
+  if (score && typeof score === "object") {
+    const s = score as Partial<EvaluationScore>;
+    if (typeof s.scoreCp === "number") return s.scoreCp / 100;
+    if (typeof s.value === "number") return s.type === "mate" ? Math.sign(s.value) * 1000 : s.value / 100;
+  }
+  return undefined;
+}
 
 export type DatabaseMode = "all" | "masters" | "lichess";
 
@@ -234,7 +251,7 @@ export function enrichMovesWithStockfish(
 
       if (idx !== -1) {
         const foundLine = engineLines[idx];
-        evalVal = foundLine.score;
+        evalVal = scoreToPawns(foundLine.score);
         rank = idx + 1;
         isBest = idx === 0;
         isCandidate = true;

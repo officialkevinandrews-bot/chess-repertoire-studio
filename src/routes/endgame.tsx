@@ -316,7 +316,7 @@ function Endgame() {
           movetime: 650,
         });
 
-        const bestMoveLan = analysis.bestMove;
+        const bestMoveLan = (analysis.lines[0]?.bestMove ?? "");
         if (bestMoveLan && bestMoveLan.length >= 4) {
           const bFrom = bestMoveLan.slice(0, 2);
           const bTo = bestMoveLan.slice(2, 4);
@@ -396,9 +396,7 @@ function Endgame() {
             setEvalScoreCp(Math.round(userAdvantage * 100));
 
             const isForcedMateForUser =
-              analysis.mateAnalysis?.isMateInX &&
-              ((userOrientation === "white" && (analysis.mateAnalysis.mateMoves || 0) > 0) ||
-                (userOrientation === "black" && (analysis.mateAnalysis.mateMoves || 0) < 0));
+              analysis.mateAnalysis?.hasMate && analysis.mateAnalysis.sideMating === userOrientation;
 
             // Resignation Handover: sustained > +8.0 or #Mate in X for 3 moves
             if (isTargetWin && (userAdvantage >= 8.0 || isForcedMateForUser)) {
@@ -445,7 +443,7 @@ function Endgame() {
             }
 
             // 3. Trigger Bot reply move
-            const bestMoveLan = analysis.bestMove;
+            const bestMoveLan = (analysis.lines[0]?.bestMove ?? "");
             if (bestMoveLan && bestMoveLan.length >= 4) {
               const bFrom = bestMoveLan.slice(0, 2);
               const bTo = bestMoveLan.slice(2, 4);

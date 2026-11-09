@@ -459,7 +459,7 @@ export function ChessTrainingProvider({ children }: { children: ReactNode }) {
                 depth: partial.depth,
               });
               if (partial.depth >= 16) {
-                saveEvaluationToCache(partial, "quick");
+                saveEvaluationToCache(partial, "local");
               }
             },
           });
