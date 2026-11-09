@@ -133,6 +133,7 @@ interface ChessTrainingContextValue {
     customFen?: string,
     customMoves?: string[],
     customPgn?: string,
+    lineId?: string,
   ) => Promise<RepertoireLine>;
   deleteLineFromVariation: (
     systemId: string,
@@ -146,6 +147,7 @@ interface ChessTrainingContextValue {
   flip: () => void;
   setOrientation: (o: Orientation) => void;
   loadFen: (fen: string) => void;
+  loadMoves: (moves: string[], startFen?: string) => void;
   getPgn: () => string;
   saveVariation: (
     name?: string,
@@ -562,6 +564,25 @@ export function ChessTrainingProvider({ children }: { children: ReactNode }) {
   );
 
   const loadFen = useCallback((f: string) => reset(f), [reset]);
+  const loadMoves = useCallback(
+    (moves: string[], startFen?: string) => {
+      const g = new Chess(startFen ?? START_FEN);
+      for (const m of moves) {
+        try {
+          const res = g.move(m);
+          if (!res) break;
+        } catch {
+          break;
+        }
+      }
+      gameRef.current = g;
+      sync();
+      setExplanation(null);
+      setLastClassification(null);
+      runAnalysis(g.fen());
+    },
+    [sync, runAnalysis],
+  );
   const flip = useCallback(() => setOrientation((o) => (o === "white" ? "black" : "white")), []);
   const getPgn = useCallback(() => gameRef.current.pgn(), []);
 
@@ -710,11 +731,13 @@ export function ChessTrainingProvider({ children }: { children: ReactNode }) {
       customFen?: string,
       customMoves?: string[],
       customPgn?: string,
+      lineId?: string,
     ) => {
       const moves = customMoves || gameRef.current.history();
       const finalFen = customFen || gameRef.current.fen();
       const pgn = customPgn || gameRef.current.pgn();
       const line = await saveLineToVarStorage(systemId, variationId, {
+        id: lineId,
         name: lineName,
         moves,
         finalFen,
@@ -786,6 +809,7 @@ export function ChessTrainingProvider({ children }: { children: ReactNode }) {
       flip,
       setOrientation,
       loadFen,
+      loadMoves,
       getPgn,
       saveVariation,
       deleteVariation,
@@ -833,6 +857,7 @@ export function ChessTrainingProvider({ children }: { children: ReactNode }) {
       flip,
       setOrientation,
       loadFen,
+      loadMoves,
       getPgn,
       saveVariation,
       deleteVariation,

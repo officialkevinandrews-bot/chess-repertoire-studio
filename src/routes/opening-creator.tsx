@@ -73,6 +73,7 @@ function OpeningCreator() {
     flip,
     setOrientation,
     loadFen,
+    loadMoves,
     updateVariationGames,
     analysis,
     isEngineThinking,
@@ -115,6 +116,7 @@ function OpeningCreator() {
   }, [refreshRepertoireSystems]);
 
   const [lineName, setLineName] = useState("");
+  const [editingLineId, setEditingLineId] = useState<string | null>(null);
   const [isScraping, setIsScraping] = useState(false);
   const [scraperStatus, setScraperStatus] = useState<ScraperProgress | null>(null);
 
@@ -282,16 +284,17 @@ function OpeningCreator() {
     setExpandedVarIds((prev) => ({ ...prev, [varId]: !prev[varId] }));
   };
 
-  const handleSelectLine = (line: RepertoireLine) => {
-    // Reset board and play line moves
-    reset();
-    for (const m of line.moves) {
-      // Moves can be applied via chess
-    }
-    loadFen(line.finalFen);
+  const handleSelectLine = (line: RepertoireLine, variation?: RepertoireVariation) => {
+    // Play full line sequence onto board so history and MoveList are fully populated
+    loadMoves(line.moves);
     setLineName(line.name);
-    toast.info(`Loaded line "${line.name}"`, {
-      description: `${line.moves.length} moves played onto board.`,
+    setEditingLineId(line.id);
+    if (variation) {
+      setActiveRepertoireVariation(variation);
+      setExpandedVarIds((prev) => ({ ...prev, [variation.id]: true }));
+    }
+    toast.info(`Loaded "${line.name}"`, {
+      description: `${line.moves.length} moves on board. Ready to extend from Move 7 onwards.`,
     });
   };
 
@@ -347,7 +350,7 @@ function OpeningCreator() {
     toast.success(`Deleted variation "${name}"`);
   };
 
-  const handleSaveLine = async () => {
+  const handleSaveLine = async (shouldUpdateExisting = false) => {
     if (!activeSystem || !activeRepertoireVariation) {
       toast.error("Please select a Repertoire System and Variation first.");
       return;
@@ -361,10 +364,12 @@ function OpeningCreator() {
     const finalLineName =
       lineName.trim() || `${recognized.name} (${history.length} moves)`;
 
+    const targetLineId = shouldUpdateExisting && editingLineId ? editingLineId : undefined;
+
     setIsScraping(true);
     setScraperStatus({
       stage: "connecting",
-      message: `Saving line to ${activeRepertoireVariation.name} and scraping master games...`,
+      message: `Saving line to ${activeRepertoireVariation.name}...`,
       gamesFound: 0,
     });
 
@@ -373,31 +378,25 @@ function OpeningCreator() {
         activeSystem.id,
         activeRepertoireVariation.id,
         finalLineName,
+        undefined,
+        undefined,
+        undefined,
+        targetLineId,
       );
 
-      toast.info(`Line saved to ${activeRepertoireVariation.name}!`, {
-        description: `Pulling master games for ${activeSystem.name}...`,
-      });
-
-      // Run live Lichess scraper pipeline with persistent token
-      const scrapeResult = await scrapeGamesForVariation(line.finalFen, line.moves, {
-        targetGameCount: 50,
-        userColor: activeSystem.color,
-        onProgress: (p) => setScraperStatus(p),
-      });
-
-      // Link games and endgames to this line
-      await updateVariationGames(line.id, scrapeResult.games, scrapeResult.endgames);
-      await refreshRepertoireSystems();
-
+      setEditingLineId(line.id);
       setIsScraping(false);
-      toast.success("Training Loop Ready!", {
-        description: `Loaded ${scrapeResult.games.length} master games & ${scrapeResult.endgames.length} practical endgames.`,
-      });
+      await refreshRepertoireSystems();
+      toast.success(
+        targetLineId ? `Updated line "${line.name}"!` : `Saved new branch "${line.name}"!`,
+        {
+          description: `${line.moves.length} moves saved to ${activeRepertoireVariation.name}.`,
+        },
+      );
     } catch (err) {
       console.error("Save line error:", err);
       setIsScraping(false);
-      toast.error("Line saved locally. Master games scrape can be retried later.");
+      toast.error("Failed to save line.");
     }
   };
 
@@ -676,41 +675,53 @@ function OpeningCreator() {
                               No lines saved in this variation yet. Play moves on the board and click &quot;Save Line&quot;.
                             </div>
                           ) : (
-                            v.lines.map((l) => (
-                              <div
-                                key={l.id}
-                                className="flex items-center justify-between gap-2 rounded-md border border-border/60 bg-card/90 p-2 text-xs transition-colors hover:border-primary/40"
-                              >
-                                <button
-                                  type="button"
-                                  className="min-w-0 flex-1 text-left"
-                                  onClick={() => handleSelectLine(l)}
+                            v.lines.map((l) => {
+                              const isLineActive = editingLineId === l.id;
+                              return (
+                                <div
+                                  key={l.id}
+                                  className={`flex items-center justify-between gap-2 rounded-md border p-2 text-xs transition-colors ${
+                                    isLineActive
+                                      ? "border-primary bg-primary/10 shadow-sm"
+                                      : "border-border/60 bg-card/90 hover:border-primary/40"
+                                  }`}
                                 >
-                                  <div className="font-medium text-foreground truncate">
-                                    {l.name}
-                                  </div>
-                                  <div className="text-[10px] text-muted-foreground font-mono truncate">
-                                    {l.moves.join(" ")} ({l.moves.length} moves)
-                                  </div>
-                                </button>
-                                <Button
-                                  size="sm"
-                                  variant="ghost"
-                                  className="h-6 w-6 p-0 text-muted-foreground hover:text-destructive hover:bg-destructive/10"
-                                  onClick={() =>
-                                    handleDeleteLine(
-                                      activeSystem.id,
-                                      v.id,
-                                      l.id,
-                                      l.name,
-                                    )
-                                  }
-                                  title={`Delete line "${l.name}"`}
-                                >
-                                  <Trash2 className="h-3 w-3" />
-                                </Button>
-                              </div>
-                            ))
+                                  <button
+                                    type="button"
+                                    className="min-w-0 flex-1 text-left"
+                                    onClick={() => handleSelectLine(l, v)}
+                                  >
+                                    <div className="flex items-center gap-1.5 font-medium text-foreground truncate">
+                                      <span>{l.name}</span>
+                                      {isLineActive && (
+                                        <span className="rounded bg-primary/20 text-primary px-1.5 py-0.5 text-[9px] font-semibold">
+                                          On Board
+                                        </span>
+                                      )}
+                                    </div>
+                                    <div className="text-[10px] text-muted-foreground font-mono truncate">
+                                      {l.moves.join(" ")} ({l.moves.length} moves)
+                                    </div>
+                                  </button>
+                                  <Button
+                                    size="sm"
+                                    variant="ghost"
+                                    className="h-6 w-6 p-0 text-muted-foreground hover:text-destructive hover:bg-destructive/10"
+                                    onClick={() =>
+                                      handleDeleteLine(
+                                        activeSystem.id,
+                                        v.id,
+                                        l.id,
+                                        l.name,
+                                      )
+                                    }
+                                    title={`Delete line "${l.name}"`}
+                                  >
+                                    <Trash2 className="h-3 w-3" />
+                                  </Button>
+                                </div>
+                              );
+                            })
                           )}
                         </div>
                       )}
@@ -840,37 +851,102 @@ function OpeningCreator() {
               </p>
             </div>
 
-            {/* Save Line Form */}
-            <div className="space-y-2">
+            {/* Save / Update Line Form */}
+            <div className="space-y-3">
+              {editingLineId && (
+                <div className="flex items-center justify-between rounded-lg bg-primary/10 border border-primary/30 px-3 py-1.5 text-xs text-primary">
+                  <span className="font-medium truncate">
+                    Editing Line: {history.length} moves on board (Transition at 6. Nbd2)
+                  </span>
+                  <Button
+                    size="sm"
+                    variant="ghost"
+                    className="h-6 px-2 text-[11px] hover:bg-primary/20"
+                    onClick={() => {
+                      setEditingLineId(null);
+                      setLineName("");
+                    }}
+                  >
+                    Clear (New Line)
+                  </Button>
+                </div>
+              )}
+
               <Input
-                placeholder={`Line name (e.g. Central Pawn Fork: White plays 5. Bd3)`}
+                placeholder={`Line name (e.g. ${recognized.name})`}
                 value={lineName}
                 onChange={(e) => setLineName(e.target.value)}
               />
 
-              <Button
-                size="lg"
-                className="w-full h-12 text-base font-semibold shadow-md"
-                disabled={
-                  isScraping ||
-                  history.length === 0 ||
-                  !activeSystem ||
-                  !activeRepertoireVariation
-                }
-                onClick={handleSaveLine}
-              >
-                {isScraping ? (
+              <div className="flex flex-col sm:flex-row gap-2">
+                {editingLineId ? (
                   <>
-                    <Loader2 className="h-5 w-5 animate-spin mr-2" />
-                    Saving Line &amp; Scraping Master Games...
+                    <Button
+                      size="lg"
+                      className="flex-1 h-12 text-sm font-semibold shadow-md"
+                      disabled={
+                        isScraping ||
+                        history.length === 0 ||
+                        !activeSystem ||
+                        !activeRepertoireVariation
+                      }
+                      onClick={() => handleSaveLine(true)}
+                    >
+                      {isScraping ? (
+                        <>
+                          <Loader2 className="h-4 w-4 animate-spin mr-2" />
+                          Updating...
+                        </>
+                      ) : (
+                        <>
+                          <Save className="h-4 w-4 mr-2" />
+                          Update Line ({history.length} moves)
+                        </>
+                      )}
+                    </Button>
+                    <Button
+                      size="lg"
+                      variant="outline"
+                      className="flex-1 h-12 text-sm font-semibold border-dashed"
+                      disabled={
+                        isScraping ||
+                        history.length === 0 ||
+                        !activeSystem ||
+                        !activeRepertoireVariation
+                      }
+                      onClick={() => handleSaveLine(false)}
+                      title="Save as a separate line branch under this variation"
+                    >
+                      <GitBranch className="h-4 w-4 mr-2" />
+                      Save as New Branch
+                    </Button>
                   </>
                 ) : (
-                  <>
-                    <Save className="mr-2" />
-                    Save Line to {activeRepertoireVariation?.name || "Variation"}
-                  </>
+                  <Button
+                    size="lg"
+                    className="w-full h-12 text-base font-semibold shadow-md"
+                    disabled={
+                      isScraping ||
+                      history.length === 0 ||
+                      !activeSystem ||
+                      !activeRepertoireVariation
+                    }
+                    onClick={() => handleSaveLine(false)}
+                  >
+                    {isScraping ? (
+                      <>
+                        <Loader2 className="h-5 w-5 animate-spin mr-2" />
+                        Saving Line...
+                      </>
+                    ) : (
+                      <>
+                        <Save className="mr-2" />
+                        Save Line to {activeRepertoireVariation?.name || "Variation"}
+                      </>
+                    )}
+                  </Button>
                 )}
-              </Button>
+              </div>
             </div>
 
             {/* Live Scraper Progress Notification */}

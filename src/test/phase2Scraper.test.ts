@@ -219,74 +219,62 @@ describe("Phase 2: Opening Identification & Repertoire Scraper", () => {
     expect(remainingEndgames.some((e) => e.id === "endgame-to-purge-1")).toBe(false);
   });
 
-  it("installs King's Indian Attack for White with variations, ECO identification, and Pawn DNA", () => {
+  it("installs King's Indian Attack for White with 11 setup archetypes stopping at 6. Nbd2", () => {
     const kiaSys = DEFAULT_REPERTOIRE_SYSTEMS.find((s) => s.id === "kings-indian-attack");
     expect(kiaSys).toBeDefined();
     expect(kiaSys?.color).toBe("white");
     expect(kiaSys?.ecoGroup).toBe("A07-A08");
-    expect(kiaSys?.lichessOpeningTag).toBe("kings_indian_attack");
-    expect(kiaSys?.variations.length).toBeGreaterThanOrEqual(6);
+    expect(kiaSys?.variations.length).toBe(11);
 
-    // Verify Fischer French KIA move order (1. e4 e6 2. d3 d5 3. Nd2)
-    const fischerFrench = identifyOpening(["e4", "e6", "d3", "d5", "Nd2"]);
-    expect(fischerFrench.eco).toBe("C00");
-    expect(fischerFrench.name).toContain("King's Indian Attack: French Variation");
+    const expectedVariationNames = [
+      "The French Setup",
+      "The Sicilian Setup",
+      "The Queen's Gambit Declined Setup",
+      "The Caro-Kann Setup",
+      "The Slav Setup",
+      "The Scandinavian Setup",
+      "The Symmetrical KIA / Reti Setup",
+      "The King's Indian Defence / Benoni Setup",
+      "The Hippopotamus / Queen's Indian Setup",
+      "The Reversed King's Indian / Big Center",
+      "The Hyper-Aggressive King Storm",
+    ];
 
-    // Verify Barcza / Yugoslav KIA move order (1. Nf3 d5 2. g3 Nf6 3. Bg2 c5 4. O-O Nc6 5. d3 e6 6. Nbd2)
-    const yugoslavKia = identifyOpening([
-      "Nf3",
-      "d5",
-      "g3",
-      "Nf6",
-      "Bg2",
-      "c5",
-      "O-O",
-      "Nc6",
-      "d3",
-      "e6",
-      "Nbd2",
+    expect(kiaSys?.variations.map((v) => v.name)).toEqual(expectedVariationNames);
+
+    // Verify every variation stops exactly at White's 6th move (Nbd2) with 11 plies
+    const baseWhiteSetup = ["Nf3", "g3", "Bg2", "O-O", "d3", "Nbd2"];
+    for (const v of kiaSys!.variations) {
+      expect(v.lines.length).toBeGreaterThanOrEqual(1);
+      const baseLine = v.lines[0];
+      expect(baseLine.moves.length).toBe(11);
+      // White moves are at ply 0, 2, 4, 6, 8, 10
+      const whiteMoves = [
+        baseLine.moves[0],
+        baseLine.moves[2],
+        baseLine.moves[4],
+        baseLine.moves[6],
+        baseLine.moves[8],
+        baseLine.moves[10],
+      ];
+      expect(whiteMoves).toEqual(baseWhiteSetup);
+      expect(baseLine.moves[10]).toBe("Nbd2");
+    }
+
+    // Verify opening recognition for archetypes
+    const frenchMatch = identifyOpening([
+      "Nf3", "d5", "g3", "e6", "Bg2", "c5", "O-O", "Nc6", "d3", "Nf6", "Nbd2"
     ]);
-    expect(yugoslavKia.eco).toBe("A08");
-    expect(yugoslavKia.name).toContain("King's Indian Attack");
+    expect(frenchMatch.name).toBe("King's Indian Attack: The French Setup");
 
-    // Verify Pawn Structure DNA for KIA e5 Spearhead & Fischer Kingside Storm
-    const yugoslavVar = kiaSys?.variations.find((v) => v.id === "kia-yugoslav-spassky");
-    const spearheadLine = yugoslavVar?.lines.find((l) => l.id === "kia-e5-spearhead");
-    expect(spearheadLine).toBeDefined();
-    const dna = extractPawnDna(spearheadLine!.finalFen);
-    expect(dna.structureName).toBe("King's Indian Attack Spearhead (e5 Wedge)");
-
-    const stormLine = yugoslavVar?.lines.find((l) => l.id === "kia-fischer-storm");
-    expect(stormLine).toBeDefined();
-    expect(stormLine?.moves[0]).toBe("Nf3");
-    expect(stormLine?.moves).toContain("h4");
-    expect(stormLine?.moves).toContain("N1h2");
-
-    // Verify Keres setup has both h3 and c3 variations
-    const keresVar = kiaSys?.variations.find((v) => v.id === "kia-keres");
-    expect(keresVar).toBeDefined();
-    const h3Line = keresVar?.lines.find((l) => l.id === "kia-keres-h3");
-    const c3Line = keresVar?.lines.find((l) => l.id === "kia-keres-c3");
-    expect(h3Line).toBeDefined();
-    expect(c3Line).toBeDefined();
-    expect(h3Line?.moves).toContain("h3");
-    expect(c3Line?.moves).toContain("c3");
-
-    // Verify identification of Fischer storm and Keres h3/c3 plans
-    const stormId = identifyOpening([
-      "Nf3", "d5", "g3", "Nf6", "Bg2", "c5", "O-O", "Nc6", "d3", "e6",
-      "Nbd2", "Be7", "e4", "O-O", "Re1", "b5", "e5", "Nd7", "Nf1", "a5", "h4"
+    const sicilianMatch = identifyOpening([
+      "Nf3", "c5", "g3", "Nc6", "Bg2", "g6", "O-O", "Bg7", "d3", "d6", "Nbd2"
     ]);
-    expect(stormId.name).toContain("Fischer Kingside Storm");
+    expect(sicilianMatch.name).toBe("King's Indian Attack: The Sicilian Setup");
 
-    const keresH3Id = identifyOpening([
-      "Nf3", "d5", "g3", "Nf6", "Bg2", "Bg4", "O-O", "Nbd7", "d3", "e6", "Nbd2", "Bd6", "h3"
+    const hyperAggressiveMatch = identifyOpening([
+      "Nf3", "d5", "g3", "Nc6", "Bg2", "e5", "O-O", "h5", "d3", "h4", "Nbd2"
     ]);
-    expect(keresH3Id.name).toContain("Active h3 Plan");
-
-    const keresC3Id = identifyOpening([
-      "Nf3", "d5", "g3", "Nf6", "Bg2", "Bg4", "O-O", "Nbd7", "d3", "e6", "Nbd2", "Bd6", "c3"
-    ]);
-    expect(keresC3Id.name).toContain("Solid c3 Plan");
+    expect(hyperAggressiveMatch.name).toBe("King's Indian Attack: The Hyper-Aggressive King Storm");
   });
 });

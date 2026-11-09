@@ -149,15 +149,61 @@ const OPENING_DATABASE: { moves: string[]; eco: string; name: string }[] = [
     eco: "B10",
     name: "King's Indian Attack: Caro-Kann Variation",
   },
+  // King's Indian Attack (11 Core Setup Archetypes stopping at 6. Nbd2)
   {
-    moves: ["Nf3", "d5", "g3", "Nf6", "Bg2", "c5", "O-O", "Nc6", "d3", "e6", "Nbd2", "Be7", "e4", "O-O", "Re1", "b5", "e5", "Nd7", "Nf1", "a5", "h4"],
-    eco: "A08",
-    name: "King's Indian Attack: Fischer Kingside Storm",
+    moves: ["Nf3", "d5", "g3", "e6", "Bg2", "c5", "O-O", "Nc6", "d3", "Nf6", "Nbd2"],
+    eco: "A07",
+    name: "King's Indian Attack: The French Setup",
   },
   {
-    moves: ["Nf3", "d5", "g3", "Nf6", "Bg2", "c5", "O-O", "Nc6", "d3", "e6", "Nbd2"],
+    moves: ["Nf3", "c5", "g3", "Nc6", "Bg2", "g6", "O-O", "Bg7", "d3", "d6", "Nbd2"],
+    eco: "A07",
+    name: "King's Indian Attack: The Sicilian Setup",
+  },
+  {
+    moves: ["Nf3", "d5", "g3", "Nf6", "Bg2", "e6", "O-O", "Be7", "d3", "O-O", "Nbd2"],
+    eco: "A07",
+    name: "King's Indian Attack: The Queen's Gambit Declined Setup",
+  },
+  {
+    moves: ["Nf3", "d5", "g3", "c6", "Bg2", "Bf5", "O-O", "Nf6", "d3", "e6", "Nbd2"],
+    eco: "A07",
+    name: "King's Indian Attack: The Caro-Kann Setup",
+  },
+  {
+    moves: ["Nf3", "d5", "g3", "Nf6", "Bg2", "c6", "O-O", "Bg4", "d3", "e6", "Nbd2"],
+    eco: "A07",
+    name: "King's Indian Attack: The Slav Setup",
+  },
+  {
+    moves: ["Nf3", "d5", "g3", "Nf6", "Bg2", "Bg4", "O-O", "Nbd7", "d3", "e6", "Nbd2"],
+    eco: "A07",
+    name: "King's Indian Attack: The Scandinavian Setup",
+  },
+  {
+    moves: ["Nf3", "Nf6", "g3", "g6", "Bg2", "Bg7", "O-O", "O-O", "d3", "d6", "Nbd2"],
+    eco: "A07",
+    name: "King's Indian Attack: The Symmetrical KIA / Reti Setup",
+  },
+  {
+    moves: ["Nf3", "Nf6", "g3", "g6", "Bg2", "Bg7", "O-O", "O-O", "d3", "c5", "Nbd2"],
+    eco: "A07",
+    name: "King's Indian Attack: The King's Indian Defence / Benoni Setup",
+  },
+  {
+    moves: ["Nf3", "b6", "g3", "Bb7", "Bg2", "g6", "O-O", "Bg7", "d3", "e6", "Nbd2"],
+    eco: "A07",
+    name: "King's Indian Attack: The Hippopotamus / Queen's Indian Setup",
+  },
+  {
+    moves: ["Nf3", "d5", "g3", "c5", "Bg2", "Nc6", "O-O", "e5", "d3", "Nf6", "Nbd2"],
     eco: "A08",
-    name: "King's Indian Attack: Yugoslav / Spassky Variation",
+    name: "King's Indian Attack: The Reversed King's Indian / Big Center",
+  },
+  {
+    moves: ["Nf3", "d5", "g3", "Nc6", "Bg2", "e5", "O-O", "h5", "d3", "h4", "Nbd2"],
+    eco: "A07",
+    name: "King's Indian Attack: The Hyper-Aggressive King Storm",
   },
   {
     moves: ["Nf3", "d5", "g3", "Nf6", "Bg2", "e6", "O-O", "Be7", "d3", "O-O", "Nbd2", "c5", "e4"],
