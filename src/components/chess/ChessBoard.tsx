@@ -60,16 +60,6 @@ export function ChessBoard({
               allowDragging: !!onMove,
               squareStyles,
               arrows,
-              arrowOptions: {
-                colors: {
-                  default: "rgb(16, 185, 129)",
-                  shift: "rgb(59, 130, 246)",
-                  ctrl: "rgb(245, 158, 11)",
-                  alt: "rgb(239, 68, 68)",
-                  meta: "rgb(168, 85, 247)",
-                },
-                opacity: 0.85,
-              },
               darkSquareStyle: { backgroundColor: "var(--board-dark)" },
               lightSquareStyle: { backgroundColor: "var(--board-light)" },
               onPieceDrop: ({ sourceSquare, targetSquare }) =>

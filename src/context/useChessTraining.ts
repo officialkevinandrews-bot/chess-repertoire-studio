@@ -60,7 +60,7 @@ export const START_FEN = "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0
 
 export type Orientation = "white" | "black";
 export type EngineMode = "super-gm" | "grandmaster" | "quick" | "infinite";
-export type EngineSource = "cloud" | "local" | "infinite" | "cache" | "quick";
+export type EngineSource = "cloud" | "local" | "infinite" | "cache";
 
 export interface EngineEval {
   score: number; // Centipawns from White's perspective (+1.00 = +1 pawn)
@@ -459,7 +459,7 @@ export function ChessTrainingProvider({ children }: { children: ReactNode }) {
                 depth: partial.depth,
               });
               if (partial.depth >= 16) {
-                saveEvaluationToCache(partial, "quick");
+                saveEvaluationToCache(partial, "local");
               }
             },
           });

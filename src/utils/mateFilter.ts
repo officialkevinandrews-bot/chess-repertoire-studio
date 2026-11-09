@@ -62,7 +62,7 @@ export function verifyCheckmateLine(
       const to = lan.substring(2, 4) as Square;
       const promotion = lan.length > 4 ? lan[4].toLowerCase() : "q";
 
-      const legalMoves = chess.moves({ legal: true });
+      const legalMoves = chess.moves();
       if (legalMoves.length === 0) {
         break;
       }

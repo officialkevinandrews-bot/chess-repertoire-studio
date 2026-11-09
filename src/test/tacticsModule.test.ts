@@ -341,6 +341,11 @@ describe("Component #1: Motif-by-Motif Ingestion Pipeline & Dynamic Tier Allocat
       finalFen: "rnbqkb1r/1p2pppp/p2p1n2/8/3NP3/2N5/PPP2PPP/R1BQKB1R w KQkq - 0 6",
       createdAt: new Date().toISOString(),
       games: [],
+      eco: "B90",
+      openingName: "Sicilian Defense",
+      pgn: "",
+      gameCount: 0,
+      endgames: [],
     };
 
     // Pre-populate 1 puzzle at Level 1
