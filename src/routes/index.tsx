@@ -14,6 +14,7 @@ import {
   Trash2,
   TrendingUp,
   Trophy,
+  Upload,
 } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
@@ -133,11 +134,18 @@ function Dashboard() {
         title="Welcome back"
         description="Your personalized opening repertoire, live master game databases, and structural endgame drills."
         right={
-          <Button asChild className="shadow-lg">
-            <Link to="/opening-creator">
-              <Plus className="h-4 w-4 mr-1.5" /> New Opening Line
-            </Link>
-          </Button>
+          <div className="flex items-center gap-2">
+            <Button asChild variant="outline" className="shadow-sm">
+              <Link to="/pgn-studio">
+                <Upload className="h-4 w-4 mr-1.5" /> Upload PGN
+              </Link>
+            </Button>
+            <Button asChild className="shadow-lg">
+              <Link to="/opening-creator">
+                <Plus className="h-4 w-4 mr-1.5" /> New Opening Line
+              </Link>
+            </Button>
+          </div>
         }
       />
 

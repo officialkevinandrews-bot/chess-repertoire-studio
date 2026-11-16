@@ -9,6 +9,7 @@ import {
   Shield,
   Skull,
   Swords,
+  Upload,
 } from "lucide-react";
 import {
   Sidebar,
@@ -71,6 +72,18 @@ export function AppSidebar() {
                   <Link to="/opening-creator">
                     <BookOpen />
                     <span>Opening Creator</span>
+                  </Link>
+                </SidebarMenuButton>
+              </SidebarMenuItem>
+              <SidebarMenuItem>
+                <SidebarMenuButton
+                  asChild
+                  isActive={path === "/pgn-studio"}
+                  tooltip="PGN Studio"
+                >
+                  <Link to="/pgn-studio">
+                    <Upload />
+                    <span>PGN Studio</span>
                   </Link>
                 </SidebarMenuButton>
               </SidebarMenuItem>

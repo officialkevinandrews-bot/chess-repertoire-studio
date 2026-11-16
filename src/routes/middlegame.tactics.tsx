@@ -213,15 +213,18 @@ function Tactics() {
         const sysNameLower = selectedSystem.name.toLowerCase();
         const pOpName = (p.openingName || "").toLowerCase();
         const isSystemMatch =
-          !p.openingName ||
-          pOpName.includes(sysNameLower) ||
-          (sysNameLower.includes("pirc") && (pOpName.includes("pirc") || p.id.startsWith("pirc-"))) ||
-          (sysNameLower.includes("attack") &&
-            (pOpName.includes("attack") || pOpName.includes("kia") || pOpName.includes("indian") || p.id.startsWith("kia-"))) ||
-          (sysNameLower.includes("defense") &&
-            sysNameLower.includes("king") &&
-            (pOpName.includes("indian") || p.id.startsWith("kid-"))) ||
-          (sysNameLower.includes("london") && (pOpName.includes("london") || p.id.startsWith("london-")));
+          p.repertoireSystemId === selectedSystem.id ||
+          (p.repertoireSystemId == null || p.repertoireSystemId === "general"
+            ? !p.openingName ||
+              pOpName.includes(sysNameLower) ||
+              (sysNameLower.includes("pirc") && (pOpName.includes("pirc") || p.id.startsWith("pirc-"))) ||
+              (sysNameLower.includes("attack") &&
+                (pOpName.includes("attack") || pOpName.includes("kia") || pOpName.includes("indian") || p.id.startsWith("kia-"))) ||
+              (sysNameLower.includes("defense") &&
+                sysNameLower.includes("king") &&
+                (pOpName.includes("indian") || p.id.startsWith("kid-"))) ||
+              (sysNameLower.includes("london") && (pOpName.includes("london") || p.id.startsWith("london-")))
+            : false);
 
         if (!isSystemMatch) return false;
 
@@ -229,7 +232,9 @@ function Tactics() {
         if (selectedVariation) {
           const varNameLower = selectedVariation.name.toLowerCase();
           const isVarMatch =
+            p.repertoireVariationId === selectedVariation.id ||
             p.openingVariationId === selectedVariation.id ||
+            (p.variationName && p.variationName.toLowerCase().includes(varNameLower)) ||
             pOpName.includes(varNameLower);
           if (!isVarMatch) return false;
         }

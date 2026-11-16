@@ -67,6 +67,92 @@ export function toWhitePawns(scoreCp: number, fen: string): number {
   return Math.max(-10, Math.min(10, pawns));
 }
 
+/**
+ * Convert an already White-normalized centipawn score (from parseUciInfoLine)
+ * to White-perspective pawns clamped to [-10, 10], without re-flipping on Black's turn.
+ */
+export function clampWhiteScoreCp(normalizedWhiteScoreCp: number): number {
+  const pawns = normalizedWhiteScoreCp / 100;
+  return Math.max(-10, Math.min(10, pawns));
+}
+
+export type MoveQualityAnnotation = null | "??" | "?" | "?!";
+
+export interface GameAccuracySummary {
+  whiteAccuracy: number;
+  blackAccuracy: number;
+  whiteBlunders: number;
+  blackBlunders: number;
+  whiteMistakes: number;
+  blackMistakes: number;
+  moveAnnotations: MoveQualityAnnotation[];
+}
+
+function winProbabilityPct(pawnsForMover: number): number {
+  const clamped = Math.max(-10, Math.min(10, pawnsForMover));
+  return 50 + 50 * (2 / (1 + Math.exp(-0.4 * clamped)) - 1);
+}
+
+/**
+ * Compute White & Black accuracy % and per-ply mistake/blunder annotations
+ * from White-perspective evaluations (evals[i] = eval before ply i).
+ */
+export function calculateGameAccuracy(evals: (number | null)[]): GameAccuracySummary {
+  const moveAnnotations: MoveQualityAnnotation[] = new Array(Math.max(0, evals.length - 1)).fill(null);
+  let whiteSum = 0;
+  let whiteCount = 0;
+  let blackSum = 0;
+  let blackCount = 0;
+  let whiteBlunders = 0;
+  let blackBlunders = 0;
+  let whiteMistakes = 0;
+  let blackMistakes = 0;
+
+  for (let i = 0; i + 1 < evals.length; i++) {
+    const a = evals[i];
+    const b = evals[i + 1];
+    if (a == null || b == null) continue;
+
+    const whiteMoved = i % 2 === 0;
+    const drop = Math.max(0, whiteMoved ? a - b : b - a);
+
+    if (drop >= 2.0) {
+      moveAnnotations[i] = "??";
+      if (whiteMoved) whiteBlunders++;
+      else blackBlunders++;
+    } else if (drop >= 1.0) {
+      moveAnnotations[i] = "?";
+      if (whiteMoved) whiteMistakes++;
+      else blackMistakes++;
+    } else if (drop >= 0.5) {
+      moveAnnotations[i] = "?!";
+    }
+
+    const winBefore = winProbabilityPct(whiteMoved ? a : -a);
+    const winAfter = winProbabilityPct(whiteMoved ? b : -b);
+    const winLoss = Math.max(0, winBefore - winAfter);
+    const moveAcc = Math.max(0, Math.min(100, 103.1668 * Math.exp(-0.04354 * winLoss) - 3.1669));
+
+    if (whiteMoved) {
+      whiteSum += moveAcc;
+      whiteCount++;
+    } else {
+      blackSum += moveAcc;
+      blackCount++;
+    }
+  }
+
+  return {
+    whiteAccuracy: whiteCount > 0 ? Math.round((whiteSum / whiteCount) * 10) / 10 : 0,
+    blackAccuracy: blackCount > 0 ? Math.round((blackSum / blackCount) * 10) / 10 : 0,
+    whiteBlunders,
+    blackBlunders,
+    whiteMistakes,
+    blackMistakes,
+    moveAnnotations,
+  };
+}
+
 export interface SwingMoment {
   /** Ply index of the position BEFORE the mistake (puzzle starts here for the opponent? no — for the side that could punish). */
   ply: number;
@@ -119,4 +205,65 @@ export function sansToPgn(sans: string[]): string {
   return sans
     .map((s, i) => (i % 2 === 0 ? `${i / 2 + 1}. ${s}` : s))
     .join(" ");
+}
+
+export const PGN_STUDIO_SESSION_KEY = "chess_buddy_pgn_studio_session_v1";
+
+export interface PgnStudioSession {
+  games: ParsedGame[];
+  activeIdx: number;
+  ply: number;
+  evalsByGameId: Record<string, (number | null)[]>;
+  bestMovesByGameId: Record<string, ({ pv: string[]; lan: string[] } | null)[]>;
+  updatedAt: string;
+}
+
+export function savePgnStudioSession(session: PgnStudioSession): void {
+  if (typeof window === "undefined" || !window.localStorage) return;
+  try {
+    window.localStorage.setItem(PGN_STUDIO_SESSION_KEY, JSON.stringify(session));
+  } catch {
+    // If multi-game upload exceeds localStorage quota, store only the active game
+    try {
+      const activeGame = session.games[session.activeIdx];
+      if (!activeGame) return;
+      const trimmed: PgnStudioSession = {
+        games: [activeGame],
+        activeIdx: 0,
+        ply: session.ply,
+        evalsByGameId: session.evalsByGameId[activeGame.id]
+          ? { [activeGame.id]: session.evalsByGameId[activeGame.id] }
+          : {},
+        bestMovesByGameId: session.bestMovesByGameId[activeGame.id]
+          ? { [activeGame.id]: session.bestMovesByGameId[activeGame.id] }
+          : {},
+        updatedAt: session.updatedAt,
+      };
+      window.localStorage.setItem(PGN_STUDIO_SESSION_KEY, JSON.stringify(trimmed));
+    } catch {
+      // Ignore storage failures
+    }
+  }
+}
+
+export function loadPgnStudioSession(): PgnStudioSession | null {
+  if (typeof window === "undefined" || !window.localStorage) return null;
+  try {
+    const raw = window.localStorage.getItem(PGN_STUDIO_SESSION_KEY);
+    if (!raw) return null;
+    const parsed = JSON.parse(raw) as PgnStudioSession;
+    if (!parsed || !Array.isArray(parsed.games) || parsed.games.length === 0) return null;
+    return parsed;
+  } catch {
+    return null;
+  }
+}
+
+export function clearPgnStudioSession(): void {
+  if (typeof window === "undefined" || !window.localStorage) return;
+  try {
+    window.localStorage.removeItem(PGN_STUDIO_SESSION_KEY);
+  } catch {
+    // Ignore storage failures
+  }
 }

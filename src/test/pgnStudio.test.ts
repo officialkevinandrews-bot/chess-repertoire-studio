@@ -1,5 +1,13 @@
 import { describe, expect, it } from "vitest";
-import { detectSwings, endgameGoal, findEndgameStart, parsePgnFile, toWhitePawns } from "../utils/pgnStudio";
+import {
+  calculateGameAccuracy,
+  clampWhiteScoreCp,
+  detectSwings,
+  endgameGoal,
+  findEndgameStart,
+  parsePgnFile,
+  toWhitePawns,
+} from "../utils/pgnStudio";
 
 const TWO = `[Event "A"]
 [White "Alice"]
@@ -25,10 +33,10 @@ describe("pgnStudio", () => {
     expect(g[1].black).toBe("Dee");
   });
   it("flags a drop of 1.5 pawns as a tactic for the opponent", () => {
-    // White blunders on ply 2 (index 2 -> 3): +0.3 -> -2.0
+    // White blunders on ply 2 (index 2 -> 3): +0.3 -> -2.0; Black is to punish at ply 3
     const s = detectSwings([0.2, 0.3, 0.3, -2.0, -1.9]);
     expect(s).toHaveLength(1);
-    expect(s[0].side).toBe("white");
+    expect(s[0].side).toBe("black");
     expect(s[0].ply).toBe(3);
     expect(detectSwings([0, 0.3, 0, -1.0])).toHaveLength(0);
   });
@@ -40,5 +48,20 @@ describe("pgnStudio", () => {
     expect(findEndgameStart(["rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1", "4k3/8/8/8/8/8/4P3/4K2R w - - 0 1"])).toBe(1);
     expect(endgameGoal(2, "white")).toBe("Convert the Win");
     expect(endgameGoal(2, "black")).toBe("Defend and Hold");
+  });
+  it("converts already White-normalized centipawns without double-inverting", () => {
+    expect(clampWhiteScoreCp(150)).toBe(1.5);
+    expect(clampWhiteScoreCp(-240)).toBe(-2.4);
+    expect(clampWhiteScoreCp(99900)).toBe(10);
+    expect(clampWhiteScoreCp(-99900)).toBe(-10);
+  });
+  it("computes White and Black accuracy percentages and blunder/mistake annotations", () => {
+    // Clean equal opening, then White blunders (+0.2 -> -2.1) at ply 2->3
+    const summary = calculateGameAccuracy([0.2, 0.2, 0.2, -2.1, -2.1]);
+    expect(summary.whiteBlunders).toBe(1);
+    expect(summary.blackBlunders).toBe(0);
+    expect(summary.moveAnnotations).toEqual([null, null, "??", null]);
+    expect(summary.blackAccuracy).toBeGreaterThan(95);
+    expect(summary.whiteAccuracy).toBeLessThan(summary.blackAccuracy);
   });
 });
