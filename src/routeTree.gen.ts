@@ -12,6 +12,7 @@ import { Route as rootRouteImport } from './routes/__root'
 import { Route as IndexRouteImport } from './routes/index'
 import { Route as EndgameRouteImport } from './routes/endgame'
 import { Route as OpeningCreatorRouteImport } from './routes/opening-creator'
+import { Route as PgnStudioRouteImport } from './routes/pgn-studio'
 import { Route as MiddlegameCheckmatesRouteImport } from './routes/middlegame.checkmates'
 import { Route as MiddlegameDefenseRouteImport } from './routes/middlegame.defense'
 import { Route as MiddlegameGuessTheMoveRouteImport } from './routes/middlegame.guess-the-move'
@@ -31,6 +32,11 @@ const EndgameRoute = EndgameRouteImport.update({
 const OpeningCreatorRoute = OpeningCreatorRouteImport.update({
   id: '/opening-creator',
   path: '/opening-creator',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const PgnStudioRoute = PgnStudioRouteImport.update({
+  id: '/pgn-studio',
+  path: '/pgn-studio',
   getParentRoute: () => rootRouteImport,
 } as any)
 const MiddlegameCheckmatesRoute = MiddlegameCheckmatesRouteImport.update({
@@ -64,6 +70,7 @@ export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
   '/endgame': typeof EndgameRoute
   '/opening-creator': typeof OpeningCreatorRoute
+  '/pgn-studio': typeof PgnStudioRoute
   '/middlegame/checkmates': typeof MiddlegameCheckmatesRoute
   '/middlegame/defense': typeof MiddlegameDefenseRoute
   '/middlegame/guess-the-move': typeof MiddlegameGuessTheMoveRoute
@@ -74,6 +81,7 @@ export interface FileRoutesByTo {
   '/': typeof IndexRoute
   '/endgame': typeof EndgameRoute
   '/opening-creator': typeof OpeningCreatorRoute
+  '/pgn-studio': typeof PgnStudioRoute
   '/middlegame/checkmates': typeof MiddlegameCheckmatesRoute
   '/middlegame/defense': typeof MiddlegameDefenseRoute
   '/middlegame/guess-the-move': typeof MiddlegameGuessTheMoveRoute
@@ -85,6 +93,7 @@ export interface FileRoutesById {
   '/': typeof IndexRoute
   '/endgame': typeof EndgameRoute
   '/opening-creator': typeof OpeningCreatorRoute
+  '/pgn-studio': typeof PgnStudioRoute
   '/middlegame/checkmates': typeof MiddlegameCheckmatesRoute
   '/middlegame/defense': typeof MiddlegameDefenseRoute
   '/middlegame/guess-the-move': typeof MiddlegameGuessTheMoveRoute
@@ -97,6 +106,7 @@ export interface FileRouteTypes {
     | '/'
     | '/endgame'
     | '/opening-creator'
+    | '/pgn-studio'
     | '/middlegame/checkmates'
     | '/middlegame/defense'
     | '/middlegame/guess-the-move'
@@ -107,6 +117,7 @@ export interface FileRouteTypes {
     | '/'
     | '/endgame'
     | '/opening-creator'
+    | '/pgn-studio'
     | '/middlegame/checkmates'
     | '/middlegame/defense'
     | '/middlegame/guess-the-move'
@@ -117,6 +128,7 @@ export interface FileRouteTypes {
     | '/'
     | '/endgame'
     | '/opening-creator'
+    | '/pgn-studio'
     | '/middlegame/checkmates'
     | '/middlegame/defense'
     | '/middlegame/guess-the-move'
@@ -128,6 +140,7 @@ export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
   EndgameRoute: typeof EndgameRoute
   OpeningCreatorRoute: typeof OpeningCreatorRoute
+  PgnStudioRoute: typeof PgnStudioRoute
   MiddlegameCheckmatesRoute: typeof MiddlegameCheckmatesRoute
   MiddlegameDefenseRoute: typeof MiddlegameDefenseRoute
   MiddlegameGuessTheMoveRoute: typeof MiddlegameGuessTheMoveRoute
@@ -156,6 +169,13 @@ declare module '@tanstack/react-router' {
       path: '/opening-creator'
       fullPath: '/opening-creator'
       preLoaderRoute: typeof OpeningCreatorRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/pgn-studio': {
+      id: '/pgn-studio'
+      path: '/pgn-studio'
+      fullPath: '/pgn-studio'
+      preLoaderRoute: typeof PgnStudioRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/middlegame/checkmates': {
@@ -200,6 +220,7 @@ const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
   EndgameRoute: EndgameRoute,
   OpeningCreatorRoute: OpeningCreatorRoute,
+  PgnStudioRoute: PgnStudioRoute,
   MiddlegameCheckmatesRoute: MiddlegameCheckmatesRoute,
   MiddlegameDefenseRoute: MiddlegameDefenseRoute,
   MiddlegameGuessTheMoveRoute: MiddlegameGuessTheMoveRoute,
